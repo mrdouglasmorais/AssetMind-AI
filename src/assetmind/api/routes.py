@@ -1,0 +1,164 @@
+"""Versioned HTTP routes. AgentOS control routes are not mounted here."""
+
+import json
+import re
+from collections.abc import Iterator
+from uuid import uuid4
+
+from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from assetmind.api.schemas import AnalysisAccepted, AnalysisCreate, ErrorBody
+from assetmind.application.service import AnalysisService
+from assetmind.domain.assets.catalog import search_catalog
+from assetmind.domain.assets.identity import AssetRequest
+from assetmind.domain.errors import DomainError
+from assetmind.domain.scenarios.policy import ScenarioAssumptions
+from assetmind.persistence.repository import AnalysisRepository, StoredAnalysis
+from assetmind.security.auth import AuthenticationError, require_api_key
+
+router = APIRouter()
+_CORRELATION = re.compile(r"^[A-Za-z0-9_.:-]{8,64}$")
+
+
+@router.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.get("/ready")
+def ready(request: Request) -> dict[str, str]:
+    try:
+        request.app.state.ping()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return {"status": "ready"}
+
+
+@router.get("/api/v1/assets/search")
+def search_assets(request: Request, q: str, x_api_key: str | None = Header(default=None)) -> dict[str, object]:
+    _authorize(request, x_api_key)
+    _limit(request, x_api_key or "anonymous")
+    return {
+        "results": [entry.model_dump(mode="json") for entry in search_catalog(q)],
+        "limitation": "Search uses the local catalog, not a live market listing.",
+    }
+
+
+@router.post("/api/v1/analyses", response_model=AnalysisAccepted)
+async def create_analysis(
+    request: Request,
+    body: AnalysisCreate,
+    x_api_key: str | None = Header(default=None),
+    x_correlation_id: str | None = Header(default=None),
+) -> AnalysisAccepted:
+    correlation_id = _correlation(x_correlation_id)
+    _authorize(request, x_api_key)
+    _limit(request, x_api_key or "anonymous")
+    service: AnalysisService = request.app.state.service
+    settings = request.app.state.settings
+    if len(body.assets) > settings.max_assets:
+        raise _http(422, "too_many_assets", "Too many assets for one analysis.", correlation_id)
+    scenarios = None if body.scenarios is None else ScenarioAssumptions.model_validate(body.scenarios.model_dump())
+    try:
+        stored = await service.run(
+            assets=[AssetRequest.model_validate(asset.model_dump()) for asset in body.assets],
+            scenarios=scenarios,
+            correlation_id=correlation_id,
+            as_of=body.as_of,
+            deadline_seconds=settings.deadline_seconds,
+        )
+    except DomainError as exc:
+        raise _http(422, exc.code, exc.message, correlation_id) from exc
+    report = json.loads(stored.report_json) if stored.report_json else None
+    return AnalysisAccepted(
+        analysis_id=stored.id,
+        correlation_id=stored.correlation_id,
+        status=stored.status,
+        report=report,
+        error_code=stored.error_code,
+    )
+
+
+@router.get("/api/v1/analyses/{analysis_id}")
+def get_analysis(
+    request: Request,
+    analysis_id: str,
+    x_api_key: str | None = Header(default=None),
+) -> dict[str, object]:
+    _authorize(request, x_api_key)
+    stored = _stored(request, analysis_id)
+    return {
+        "analysis_id": stored.id,
+        "correlation_id": stored.correlation_id,
+        "status": stored.status,
+        "error_code": stored.error_code,
+    }
+
+
+@router.get("/api/v1/analyses/{analysis_id}/report")
+def get_report(
+    request: Request,
+    analysis_id: str,
+    x_api_key: str | None = Header(default=None),
+) -> dict[str, object]:
+    _authorize(request, x_api_key)
+    stored = _stored(request, analysis_id)
+    if not stored.report_json:
+        raise HTTPException(status_code=404, detail="report_not_ready")
+    return json.loads(stored.report_json)
+
+
+@router.get("/api/v1/analyses/{analysis_id}/events")
+def get_events(
+    request: Request,
+    analysis_id: str,
+    x_api_key: str | None = Header(default=None),
+) -> StreamingResponse:
+    _authorize(request, x_api_key)
+    _stored(request, analysis_id)
+    repository: AnalysisRepository = request.app.state.repository
+
+    def stream() -> Iterator[str]:
+        for event in repository.events(analysis_id):
+            payload = {
+                "state": event.state,
+                "message": event.message,
+                "created_at": event.created_at.isoformat(),
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+def _authorize(request: Request, api_key: str | None) -> None:
+    try:
+        require_api_key(request.app.state.settings, api_key)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def _limit(request: Request, key: str) -> None:
+    if not request.app.state.rate_limiter.allow(key):
+        raise HTTPException(status_code=429, detail="rate_limited", headers={"Retry-After": "60"})
+
+
+def _stored(request: Request, analysis_id: str) -> StoredAnalysis:
+    repository: AnalysisRepository = request.app.state.repository
+    stored = repository.get(analysis_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="analysis_not_found")
+    return stored
+
+
+def _correlation(value: str | None) -> str:
+    if value is None:
+        return uuid4().hex
+    if not _CORRELATION.match(value):
+        raise HTTPException(status_code=400, detail="invalid_correlation_id")
+    return value
+
+
+def _http(status: int, code: str, message: str, correlation_id: str) -> HTTPException:
+    body = ErrorBody(code=code, message=message, correlation_id=correlation_id)
+    return HTTPException(status_code=status, detail=body.model_dump())

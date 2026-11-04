@@ -1,0 +1,40 @@
+# Blueprint for one web service and one Postgres instance.
+# Free plans were confirmed against Render's compute-plan catalog while writing
+# this file. Free web services spin down after inactivity. Free Postgres expires.
+# This file has not been synced to a live Render account.
+
+databases:
+  - name: assetmind-postgres
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: assetmind-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASSETMIND_ENV
+        value: production
+      - key: ASSETMIND_DATABASE_URL
+        fromDatabase:
+          name: assetmind-postgres
+          property: connectionString
+      - key: ASSETMIND_PROVIDER_MODE
+        value: live
+      - key: ASSETMIND_AGENTOS_ENABLED
+        value: "false"
+      - key: ASSETMIND_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ASSETMIND_OPENROUTER_MODEL
+        sync: false
+      - key: BRAPI_API_KEY
+        sync: false
+      - key: COINGECKO_API_KEY
+        sync: false

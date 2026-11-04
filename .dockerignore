@@ -1,0 +1,15 @@
+.venv
+.git
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+.env
+*.db
+tests
+docs
+.cursor
+**/*.md
+!README.md
+!skills/**/SKILL.md

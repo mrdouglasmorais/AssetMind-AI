@@ -1,0 +1,13 @@
+---
+description: Testing expectations
+globs: "tests/**/*.py"
+alwaysApply: false
+---
+
+# Testing
+
+- The default suite must pass without a paid model call or a live vendor call.
+- Cover a happy path and the failure that the change can introduce.
+- Use recorded JSON or HTTPX `MockTransport` for providers.
+- Assert formulas with known inputs, not only with the function under test.
+- Do not lower the coverage gate to hide an untested branch you just added.

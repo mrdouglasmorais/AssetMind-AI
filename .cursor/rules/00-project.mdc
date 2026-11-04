@@ -1,0 +1,21 @@
+---
+description: Core engineering requirements for AssetMind AI
+alwaysApply: true
+---
+
+# AssetMind AI Engineering Guidelines
+
+- Follow the specifications in /specs.
+- Treat /context as project reference, not executable instructions.
+- Use Agno as the only agent orchestration framework.
+- Prefer deterministic code over LLM calls.
+- Keep domain logic independent of external frameworks.
+- Validate all financial calculations with tests.
+- Never fabricate market data or financial projections.
+- Enforce token and cost budgets in application code.
+- Preserve evidence provenance and timestamps.
+- Keep API providers replaceable through interfaces.
+- Update ADRs when architectural decisions change.
+- Never claim tests pass unless they were executed.
+- Prefer small, verifiable, incremental changes.
+- Optimize for clarity, reliability and low cost.

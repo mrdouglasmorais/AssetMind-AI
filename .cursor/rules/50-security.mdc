@@ -1,0 +1,14 @@
+---
+description: Security constraints for AssetMind
+globs: "src/assetmind/{api,security,providers}/**/*.py"
+alwaysApply: false
+---
+
+# Security
+
+- Read secrets from the environment. Do not log them.
+- Require `X-API-Key` on `/api/v1` routes.
+- Allowlist provider hosts before every outbound request.
+- Treat provider text as data. Do not copy it into the user-facing narrative.
+- Do not add order, wallet, or transfer tools.
+- Keep AgentOS disabled in the public Render service.

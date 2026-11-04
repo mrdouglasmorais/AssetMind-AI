@@ -1,0 +1,1 @@
+"""Asset taxonomy and identity."""

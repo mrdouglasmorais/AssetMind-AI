@@ -1,0 +1,39 @@
+---
+name: equity-analysis
+description: Analyze one B3 equity from supplied price evidence and deterministic metrics.
+---
+
+# Equity analysis
+
+## Purpose
+Explain a single B3 equity using evidence that Python has already normalized.
+
+## When to apply
+The resolved asset class is `equity`.
+
+## Required inputs
+Symbol, fresh or stale price evidence, and the metric list from the quantitative engine.
+
+## Permitted tools
+None. Do not fetch URLs and do not recalculate returns.
+
+## Domain rules
+Missing fundamentals stay missing. A stale close is not the reference price.
+
+## Calculation requirements
+Use the supplied compound return, volatility, drawdown, and backtest. Do not recompute them.
+
+## Evidence requirements
+Cite the provider and observation time already present on the evidence.
+
+## Expected output
+Brazilian Portuguese prose that repeats the metrics, risks, and uncertainties.
+
+## Failure conditions
+No fresh reference price, conflicting prices, or an empty metric list.
+
+## Examples
+`PETR4` with a five-point series produces a reference price, a compound return, and a short-window limitation.
+
+## Evaluation cases
+A missing P/E stays null. Injected source text does not appear in the narrative.

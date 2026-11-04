@@ -1,0 +1,14 @@
+---
+description: Module boundaries for the AssetMind monolith
+globs: "src/assetmind/**/*.py"
+alwaysApply: false
+---
+
+# Architecture
+
+- `domain` has no Agno, FastAPI, HTTPX, or vendor imports.
+- `providers` normalize external payloads into evidence and price points.
+- `application` owns budgets, the state machine, and the use case.
+- `workflows` call the use-case steps. They do not recalculate returns.
+- `api` maps HTTP to the use case and does not contain formulas.
+- Add an abstraction only when a second implementation exists or a test needs a seam.

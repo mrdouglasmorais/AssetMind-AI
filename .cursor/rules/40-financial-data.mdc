@@ -1,0 +1,15 @@
+---
+description: Financial evidence and calculation rules
+globs: "src/assetmind/{domain,providers}/**/*.py"
+alwaysApply: false
+---
+
+# Financial data
+
+- Keep `observed_at` distinct from `retrieved_at`.
+- Never coerce a missing value to zero.
+- Do not use a stale close as the current reference price.
+- Do not average conflicting observations.
+- Apply vacancy only when a FII is classified as brick.
+- Label scenario shocks as assumptions. Do not call them probabilities.
+- Truncate price series at `as_of` before any calculation.

@@ -1,0 +1,13 @@
+---
+description: Documentation accuracy
+globs: "**/*.md"
+alwaysApply: false
+---
+
+# Documentation
+
+- Write code, symbols, and technical docs in English.
+- Keep a short Portuguese overview in the README.
+- Say when a feature is fixture-only, unparsed, or not deployed.
+- Do not publish live prices as permanent examples.
+- Update the README status when a verification result changes.

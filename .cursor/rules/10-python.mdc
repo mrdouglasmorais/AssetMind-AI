@@ -1,0 +1,19 @@
+---
+description: Python style for AssetMind
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python
+
+- Target Python 3.12 or 3.13. The locked environment is 3.13.
+- Use type hints and Pydantic v2 models at boundaries.
+- Raise domain errors with a stable `code`. Do not catch `Exception` and hide it.
+- Keep functions small enough to test without a network or a model.
+- Run Ruff and Pyright on `src` after a code change.
+
+```python
+# Missing data stays missing.
+evidence.value = None
+evidence.quality_status = QualityStatus.MISSING
+```

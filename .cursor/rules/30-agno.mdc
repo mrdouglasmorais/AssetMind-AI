@@ -1,0 +1,14 @@
+---
+description: How to use Agno in AssetMind
+globs: "src/assetmind/{agents,workflows,models}/**/*.py"
+alwaysApply: false
+---
+
+# Agno
+
+- Installed version for this MVP is 3.1.12. Check the import before using a new class.
+- Orchestrate with `Workflow`, `Step`, and `Parallel`.
+- Use an `Agent` only for bounded interpretation of structured metrics.
+- Set `telemetry=False` in tests and local runs.
+- Do not mount AgentOS unless authorization and a JWT secret are configured.
+- Do not attach skill tools that execute scripts on model request.
