@@ -1,95 +1,158 @@
-# AssetMind AI
+<p align="center">
+  <img src="doc/Assets/Banner.png" alt="AssetMind AI — engenharia de agentes para análise financeira" width="100%">
+</p>
 
-AssetMind AI é uma plataforma open source de análise financeira multiagente. O cálculo é determinístico. O modelo de linguagem, quando usado, só narra evidências que o código já produziu.
+<p align="center">
+  <a href="https://github.com/mrdouglasmorais/AssetMind-AI">Open source</a>
+  ·
+  <a href="docs/architecture/overview.md">Arquitetura</a>
+  ·
+  <a href="docs/api/http.md">API</a>
+  ·
+  <a href="docs/adr">ADRs</a>
+  ·
+  <a href="docs/tutorials/first-analysis.md">Primeira análise</a>
+</p>
 
-AssetMind AI is an open-source financial analysis platform. Market math stays in Python. Agno workflows decide the order of work. A language model is optional and is not allowed to invent prices, filings, or probabilities.
+AssetMind AI é uma plataforma open source de análise financeira. Agentes e workflows do [Agno](https://docs.agno.com) organizam o trabalho. Python calcula retorno, volatilidade, drawdown e cenários. O relatório em português só repete números que o código já produziu, com fonte e horário.
 
-This repository is the implementation behind a three-part engineering series: conception, technical decisions, and a public demonstration. It is a modular monolith with a tested HTTP API, not a chat prototype and not a trading system.
+AssetMind AI is an open-source financial analysis platform for engineers who want to study agent orchestration, context control, evidence, and cost limits. It is the implementation behind a three-part engineering series: conception, technical decisions, and a public demonstration.
 
-## Implementation status
+The figures on the banner (`+2,37%`, `+3,91%`, `+1,62%`) are part of the artwork. They are not quotes, not measurements from this repository, and not forecasts.
 
-Verified in this workspace on 4 Nov 2026:
+## O que o projeto resolve
 
-- The test suite passes with coverage above 85% for the package.
-- Ruff and Pyright pass on `src`.
-- `GET /health` and an authenticated fixture analysis for equity, crypto, and FII run through an Agno 3.1.12 `Workflow`.
-- Live HTTP 200 responses were received from brapi (`PETR4` quote), Banco Central SGS series 432, and CoinGecko (`bitcoin` markets). Those calls are not part of the default test suite.
-- The Docker image `assetmind-ai:local` built, then answered `/health`, `/ready`, and a fixture analysis for equity, crypto, and a FII. A Render deploy was not executed. `render.yaml` is authored and still needs a real deploy before anyone calls hosting production-ready.
+Uma análise pede até cinco ativos e devolve um relatório educacional com evidência rastreável. O público é quem quer ler a arquitetura, rodar os testes e chamar a API.
 
-Not implemented:
+| Classe | Exemplo | O que o MVP calcula |
+| --- | --- | --- |
+| Ações | `PETR4` | Fechamento, retorno, volatilidade, drawdown, média móvel e buy-and-hold dentro da amostra |
+| Cripto | `bitcoin` | As mesmas estatísticas de preço, com volatilidade em 365 períodos, mais valor de mercado e volume quando existem |
+| Fundos imobiliários | `HGLG11` com `asset_class=real_estate` | Preço da cota e, no modo fixture, fatos rotulados do fundo |
 
-- Live parsing of CVM monthly FII filings. Fixture mode supplies labeled sample facts. Live mode leaves those fundamentals missing.
-- A public AgentOS control plane. It stays off unless `ASSETMIND_AGENTOS_ENABLED=true` and a JWT secret is set.
-- Redis, background workers, broker execution, vector search, and RAG.
-- Calibrated return forecasts. Bear, base, and bull figures are assumptions.
+Um ticker da B3 terminado em `11` é ambíguo: pode ser unidade de ação ou cota de FII. A API pede `asset_class` em vez de adivinhar. Vacância entra só em fundo de tijolo. Fundo de papel guarda risco de crédito e indexador, e um número de vacância não vira métrica. FII, CRI e imóvel direto permanecem coisas diferentes.
 
-## Architecture
+## Visão do produto
+
+<p align="center">
+  <img src="doc/Assets/AssetMindAI.png" alt="Cartaz do AssetMind AI: usuário, orquestrador, três especialistas, dados e relatório">
+</p>
+
+O cartaz resume a intenção do projeto: um orquestrador, três caminhos de análise, uma camada de dados e um relatório com fontes. A pasta desenhada no cartaz é um mapa visual. O código vive em `src/assetmind/`, com as specs em `specs/` e as decisões em `docs/adr/`.
+
+No código, os três especialistas do cartaz são passos de um `Workflow` do Agno. Quem calcula é uma função Python. Objetos `Agent` existem para uma narrativa opcional e o caminho padrão não os chama. O rótulo "Em construção" do cartaz continua válido para o parsing ao vivo da CVM e para o deploy no Render.
 
 ```mermaid
 flowchart LR
-    client[Client] --> api[FastAPI API]
-    api --> workflow[Agno Workflow]
-    workflow --> fetch[Parallel fetch]
-    fetch --> equity[Equity path]
-    fetch --> crypto[Crypto path]
-    fetch --> fii[FII path]
-    equity --> calc[Deterministic calculations]
+    client[Cliente] --> api[FastAPI]
+    api --> workflow[Workflow Agno]
+    workflow --> fetch[Busca em paralelo]
+    fetch --> equity[Ações]
+    fetch --> crypto[Cripto]
+    fetch --> fii[FIIs]
+    equity --> calc[Cálculo determinístico]
     crypto --> calc
     fii --> calc
-    calc --> verify[Evidence checks]
-    verify --> report[Portuguese report]
-    api --> db[(PostgreSQL or SQLite)]
+    calc --> verify[Checagem de evidência]
+    verify --> report[Relatório em português]
+    api --> db[(PostgreSQL ou SQLite)]
 ```
 
-The domain package does not import Agno, FastAPI, or a data vendor. Providers sit behind adapters. Specialist stages are workflow steps with Python executors. Agno `Agent` objects exist for an optional narrative, and the default run does not call them.
+O pacote `domain` não importa Agno, FastAPI nem SDK de provedor. Cada fonte externa passa por um adapter. Estados da execução: `created`, `validating`, `planning`, `fetching`, `analyzing`, `verifying` e `completed`, com saídas explícitas em `partial`, `failed` e `cancelled`.
 
-## Asset classes
+## Cinco pilares
 
-| Class | Examples | What the MVP calculates |
+| Pilar | Onde vive | Papel |
 | --- | --- | --- |
-| Equity | `PETR4` | Close, return, volatility, drawdown, moving average, in-sample buy-and-hold |
-| Crypto | `bitcoin` | The same price statistics with a 365-period volatility convention, plus market cap and volume when present |
-| Real estate | `HGLG11` with `asset_class=real_estate` | FII quota prices, and fixture fundamentals when fixture mode is on |
+| Harness | `harness/` e `src/assetmind/application/` | Prazo, retry, orçamento, estado e falha parcial |
+| Skills | `skills/` | Procedimentos dos agentes financeiros em tempo de execução |
+| Context | `context/` e `application/context.py` | Só o resumo que a etapa precisa |
+| Specs | `specs/` | Contratos e critérios de aceitação |
+| Rules | `.cursor/rules/` e `rules/` | Padrões de código e regras de análise |
 
-Tickers ending in `11` are ambiguous on B3. The API asks for `asset_class` instead of guessing between an equity unit and a FII. Vacancy is applied only to brick funds. Paper funds keep credit and indexer notes, and a vacancy number is not turned into a metric.
+As skills em `.cursor/skills/` orientam o agente que escreve este repositório. As skills em `skills/` descrevem análise de ação, cripto, FII, cenário e evidência. Uma não substitui a outra.
 
-## Technology
+## Stack
 
-Python 3.13, Agno 3.1.12, FastAPI, Pydantic v2, OpenRouter (optional), PostgreSQL, SQLAlchemy 2, Alembic, HTTPX, NumPy, pandas, uv, Ruff, Pyright, pytest, Docker, GitHub Actions, Render.
+| Camada | Escolha |
+| --- | --- |
+| Linguagem | Python 3.13, com suporte declarado a 3.12 |
+| Orquestração | Agno 3.1.12: `Workflow`, `Step` e `Parallel` |
+| API | FastAPI e Pydantic v2 |
+| Modelos | OpenRouter, opcional e desligado no caminho padrão |
+| Dados | PostgreSQL em produção, SQLite para desenvolvimento e testes |
+| Migrações | SQLAlchemy 2 e Alembic |
+| HTTP | HTTPX assíncrono |
+| Cálculo | NumPy e pandas |
+| Qualidade | pytest, Ruff e Pyright |
+| Entrega | uv, Docker, GitHub Actions e um blueprint Render |
 
-Redis is intentionally absent. One web process is enough for the current execution model.
+Redis não entra neste MVP. Um processo web dá conta do modelo de execução atual. Não há Kubernetes, fila ou um serviço por agente.
 
-## Getting started
+## Mapa do repositório
+
+```text
+src/assetmind/
+  api/            HTTP, schemas e OpenAPI
+  application/    caso de uso, orçamento, estado e relatório
+  domain/         ativos, evidência, métricas e cenários
+  workflows/      workflow Agno
+  agents/         agentes opcionais, fora do caminho padrão
+  providers/      brapi, CoinGecko, Banco Central e fixture da CVM
+  persistence/    tabelas da aplicação
+  security/       API key e limite de taxa
+docs/adr/         decisões de arquitetura
+specs/            contratos
+skills/           procedimentos de execução
+.cursor/          regras e skills de desenvolvimento
+```
+
+## Como rodar
+
+Pré-requisitos: [uv](https://docs.astral.sh/uv/), Python 3.12 ou 3.13, e `make`. Docker entra só nos alvos de imagem e Compose.
+
+`make init` cria `.env` a partir de `.env.example` quando o arquivo ainda não existe, preenche `ASSETMIND_API_KEY` com `local-dev-key` se a linha estiver vazia, e instala as dependências. Essa chave vale para a máquina local. Troque-a antes de qualquer ambiente compartilhado. O modo padrão continua `fixtures`: os preços são séries sintéticas, não cotação.
 
 ```bash
-uv sync --all-groups
-cp .env.example .env
-# Set ASSETMIND_API_KEY and keep ASSETMIND_PROVIDER_MODE=fixtures for an offline demo.
-uv run pytest
-uv run uvicorn assetmind.main:app --host 0.0.0.0 --port 8000
+make init
+make watch
 ```
 
-Fixture mode uses synthetic prices. Do not describe those numbers as market quotes.
+`make watch` sobe a API em [http://127.0.0.1:8000](http://127.0.0.1:8000) e recarrega quando `src/` muda. A documentação interativa fica em [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). Outra porta: `make watch PORT=9000`. O passo a passo da primeira análise está em [docs/tutorials/first-analysis.md](docs/tutorials/first-analysis.md).
 
-## Configuration
-
-See `.env.example`. Production on Render should set `ASSETMIND_DATABASE_URL` from the managed Postgres connection string. The application rewrites `postgres://` to `postgresql+psycopg://`.
-
-Write endpoints require `X-API-Key`. Health and readiness do not.
-
-Default guardrails for one basic analysis, before scaling by asset count:
-
-| Limit | Default |
+| Alvo | O que faz |
 | --- | --- |
-| Total estimated LLM tokens | 4000, multiplied by the number of assets |
-| Narrative output tokens | 1200 |
-| LLM calls | 8 |
-| Provider calls | 12, multiplied by the number of assets |
-| Estimated LLM cost | USD 0.03, multiplied by the number of assets |
+| `make help` | Lista os alvos |
+| `make init` | Prepara `.env` e sincroniza o ambiente |
+| `make install` | `uv sync --all-groups` |
+| `make watch` | API com reload |
+| `make run` | API sem reload |
+| `make test` | pytest |
+| `make lint` | Ruff |
+| `make format` | Formata com Ruff |
+| `make typecheck` | Pyright |
+| `make check` | Lint, formato, tipos, testes e varredura de segredos |
+| `make migrate` | `alembic upgrade head` |
+| `make secrets` | Varredura de segredos óbvios |
+| `make build` | Imagem Docker `assetmind-ai:local` |
+| `make up` | Compose com build: API e Postgres local |
+| `make down` | Encerra o Compose |
+| `make logs` | Acompanha o log da API no Compose |
+| `make clean` | Remove cache local e o SQLite `assetmind.db` |
 
-These are engineering guardrails. They are not measured production costs. Estimated tokens and actual provider usage are stored separately. Crossing a budget stops the run and returns a partial result when any asset already has metrics.
+`make up` publica a API em `http://localhost:8000` com o Postgres do [docker-compose.yml](docker-compose.yml). A senha `assetmind` desse arquivo vale só para desenvolvimento. `make build` só constrói a imagem. Ela ainda não significa um deploy no Render.
 
-## Example
+## API
+
+| Método | Caminho | Auth |
+| --- | --- | --- |
+| `GET` | `/health` | pública |
+| `GET` | `/ready` | pública |
+| `GET` | `/api/v1/assets/search?q=` | `X-API-Key` |
+| `POST` | `/api/v1/analyses` | `X-API-Key` |
+| `GET` | `/api/v1/analyses/{id}` | `X-API-Key` |
+| `GET` | `/api/v1/analyses/{id}/events` | `X-API-Key`, SSE |
+| `GET` | `/api/v1/analyses/{id}/report` | `X-API-Key` |
 
 ```bash
 curl -s http://localhost:8000/health
@@ -97,57 +160,98 @@ curl -s http://localhost:8000/health
 curl -s http://localhost:8000/api/v1/analyses \
   -H "X-API-Key: $ASSETMIND_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"assets":[{"symbol":"PETR4"},{"symbol":"bitcoin","asset_class":"crypto"},{"symbol":"HGLG11","asset_class":"real_estate"}]}'
+  -d '{
+    "assets": [
+      {"symbol": "PETR4"},
+      {"symbol": "bitcoin", "asset_class": "crypto"},
+      {"symbol": "HGLG11", "asset_class": "real_estate"}
+    ]
+  }'
 ```
 
-Progress is available as Server-Sent Events at `GET /api/v1/analyses/{id}/events`.
+A resposta traz `analysis_id`, `correlation_id` e `status`. Os status úteis são `completed`, `partial` e `failed`. Um resultado `partial` conserva o que já foi calculado e nomeia o limite ou a lacuna. O progresso gravado sai em `GET /api/v1/analyses/{id}/events`.
 
-## Tests
+Símbolo inválido e ticker ambíguo respondem `422`. Chave ausente responde `401`. O limite em memória responde `429`. O contrato completo está em [specs/api-contracts.md](specs/api-contracts.md) e [docs/api/http.md](docs/api/http.md).
+
+## Configuração e custo
+
+As variáveis estão em [.env.example](.env.example). Em produção, `ASSETMIND_DATABASE_URL` pode chegar como `postgres://`; a aplicação reescreve o esquema para `postgresql+psycopg://`.
+
+Guardrails de uma análise básica, antes de multiplicar pelo número de ativos:
+
+| Limite | Padrão | Escala com os ativos |
+| --- | --- | --- |
+| Tokens estimados | 4000 | sim |
+| Tokens de saída da narrativa | 1200 | não |
+| Chamadas de modelo | 8 | não |
+| Chamadas de provedor | 12 | sim |
+| Custo estimado de modelo | USD 0,03 | sim |
+
+São limites de engenharia, não custo medido em produção. Uso estimado e uso real ficam em campos separados. Estourar o orçamento encerra a rodada e devolve resultado parcial quando alguma métrica já existe.
+
+O caminho versionado faz roteamento, busca e conta em Python. O compositor copia essas métricas para o português e deixa de fora o texto livre do provedor. Isso também impede que uma frase vinda da fonte entre no relatório como instrução. OpenRouter só entra se alguém ligar a narrativa depois, atrás do mesmo orçamento. A suíte de testes não gasta token pago.
+
+## Fontes de dados
+
+| Fonte | Papel | Limite conhecido |
+| --- | --- | --- |
+| [brapi](https://brapi.dev) | Cotações e histórico diário da B3 | Plano gratuito restrito. `PETR4`, `VALE3`, `MGLU3` e `ITUB4` podem ser consultados sem token. Acesso gratuito não é licença de redistribuição. |
+| [CoinGecko](https://www.coingecko.com/en/api) | Mercado de cripto | API pública com limite de taxa. |
+| [Banco Central SGS](https://dadosabertos.bcb.gov.br) | Meta Selic, série 432 | Contexto macro para FII de papel. Não é fato do fundo. |
+| Dados abertos da CVM | Informes de FII | O informe mensal ainda não é interpretado. |
+
+Cada observação guarda provedor, URL quando existe, instante observado e instante da coleta. Número ausente continua ausente. Fechamento vencido permanece como histórico e não vira preço de referência. Detalhe em [context/data-sources.md](context/data-sources.md).
+
+## Testes
 
 ```bash
-uv run ruff check src tests migrations
-uv run pyright
-uv run pytest
+make check
 ```
 
-The default suite does not call a paid model or a live market API. External payloads are fixtures or an HTTPX mock transport.
+O mesmo conjunto, separado: `make lint`, `make typecheck` e `make test`.
 
-## Data sources
+A suíte padrão usa fixtures e `MockTransport`. Ela não chama modelo pago nem API de mercado. A meta de cobertura do pacote é 85%.
 
-| Source | Role | Constraint |
-| --- | --- | --- |
-| [brapi](https://brapi.dev) | B3 quotes and daily history | Free plan is limited. `PETR4`, `VALE3`, `MGLU3`, and `ITUB4` can be queried without a token. Free access is not a redistribution license. |
-| [CoinGecko](https://www.coingecko.com/en/api) | Crypto market data | Public API is rate limited. |
-| [Banco Central SGS](https://dadosabertos.bcb.gov.br) | Selic target, series 432 | Macro context for paper FIIs, not a fund fact. |
-| CVM open data | FII filings | The monthly informe is not parsed yet. |
+Verificado neste workspace em 4 de novembro de 2026:
 
-Missing numbers stay missing. They are never replaced with zero. A stale close is kept as evidence and is not reused as the current reference price.
+- Ruff, Pyright e pytest passaram. A cobertura ficou em 86,56%, com 28 testes.
+- A imagem `assetmind-ai:local` respondeu `/health`, `/ready` e uma análise fixture de ação, cripto e FII, com zero chamadas de modelo.
+- brapi (`PETR4`), a série 432 do Banco Central e o CoinGecko (`bitcoin`) responderam HTTP 200. Essas chamadas ficam fora da suíte.
 
-## Cost control
+## Deploy
 
-Deterministic code handles routing, fetching, and math. The report composer copies those results into Brazilian Portuguese and does not copy provider prose, which also blocks instruction-like text in source payloads. OpenRouter is used only if an operator later wires a narrative call. The checked-in path does not spend model tokens.
+O [Dockerfile](Dockerfile) escuta `0.0.0.0:$PORT`. O [render.yaml](render.yaml) descreve um web service e um Postgres no plano free, com health check em `/health` e AgentOS desligado. O blueprint foi escrito e ainda não foi publicado numa conta Render. Serviço free adormece após inatividade, e o Postgres free expira. Nenhum preço em dólar é afirmado aqui.
 
-## Limitations
+## Estado e limites
 
-- Search uses a small local catalog.
-- Analyses run inside the request. There is no durable job queue.
-- Scenario shocks default to -15%, 0%, and +15% and are labeled illustrative assumptions, not forecasts.
-- Volatility annualization uses 252 periods for B3 names and 365 for crypto. That is a convention.
-- No latency, accuracy, or hosting-cost measurement is claimed beyond the checks listed above.
+Implementado: domínio, adapters, motor quantitativo, workflow Agno, orçamento, API autenticada, persistência, testes, Docker e a documentação desta página.
 
-## Roadmap
+Ainda em aberto:
 
-1. Parse CVM FII informes with explicit source timestamps.
-2. Optional OpenRouter narrative behind the existing budget manager.
-3. Validate the Render blueprint with a real deploy.
-4. Consider Agno durable execution only after a job no longer fits the request.
+- Leitura do informe mensal da CVM. No modo `live`, fundamentos do FII ficam ausentes. No modo `fixtures`, os fatos de amostra vêm rotulados.
+- Plano de controle do AgentOS. Ele só sobe com `ASSETMIND_AGENTOS_ENABLED=true` e um segredo JWT.
+- Busca além do catálogo local.
+- Fila durável. A análise corre dentro do request.
+- Previsão com probabilidade calibrada. Os choques padrão são -15%, 0% e +15%, marcados como premissa ilustrativa.
+- Deploy validado no Render, latência medida e custo medido de hospedagem.
 
-## Contributing
+Volatilidade anualizada usa 252 períodos na B3 e 365 em cripto. É convenção de amostragem.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and `AGENTS.md`. Architectural changes belong in `docs/adr`.
+## Roteiro
 
-## Disclaimer
+1. Interpretar informes de FII da CVM com carimbo de fonte.
+2. Ligar a narrativa OpenRouter atrás do orçamento que já existe.
+3. Publicar o blueprint no Render e registrar o que aconteceu.
+4. Avaliar execução durável do Agno só quando uma análise deixar de caber no request.
 
-Material educacional. Não é recomendação de investimento, oferta ou promessa de retorno. Cenários não são previsões com probabilidade calibrada.
+A série de artigos acompanha essa ordem: concepção e arquitetura, decisões e infraestrutura, implementação e demonstração.
+
+## Contribuir
+
+Leia [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) e [SECURITY.md](SECURITY.md). Mudança de arquitetura ganha um ADR em [docs/adr](docs/adr). Não commite `.env` nem apresente preço de fixture como cotação.
+
+## Aviso
+
+Material educacional. Não é recomendação de investimento, oferta ou promessa de retorno. Cenário não é previsão com probabilidade calibrada.
 
 Educational material only. Nothing in this repository is investment advice, an offer, or a promise of return.
