@@ -41,6 +41,12 @@ def price_frame(prices: list[PricePoint]) -> pd.DataFrame:
     )
 
 
+def observation_window(prices: list[PricePoint]) -> str:
+    start = prices[0].observed_at.date().isoformat()
+    end = prices[-1].observed_at.date().isoformat()
+    return f"{start} to {end}, {len(prices)} observations"
+
+
 def simple_returns(prices: list[PricePoint]) -> list[float]:
     """r_t = close_t / close_{t-1} - 1."""
 
@@ -60,7 +66,7 @@ def compound_return(prices: list[PricePoint]) -> MetricResult | None:
         value=value,
         unit="fraction",
         formula="close_end / close_start - 1",
-        sampling=f"{len(prices)} observations",
+        sampling=observation_window(prices),
         assumptions=["Prices are positive and ordered by observation time."],
         limitations=["Ignores cash flows unless the series is already adjusted."],
         interpretation="Buy-and-hold return over the supplied window.",
@@ -84,7 +90,7 @@ def annualized_volatility(
         value=value,
         unit="fraction",
         formula="stdev(simple_returns, ddof=1) * sqrt(periods_per_year)",
-        sampling=f"{len(returns)} simple returns; {periods_per_year} periods/year",
+        sampling=f"{observation_window(prices)}; {len(returns)} simple returns; {periods_per_year} periods/year",
         assumptions=["Returns are the simple close-to-close series in this window."],
         limitations=[
             "Not a forecast.",
@@ -109,7 +115,7 @@ def maximum_drawdown(prices: list[PricePoint]) -> MetricResult | None:
         value=worst,
         unit="fraction",
         formula="min(close_t / running_peak_t - 1)",
-        sampling=f"{len(prices)} observations",
+        sampling=observation_window(prices),
         assumptions=["The running peak uses only prices inside the supplied window."],
         limitations=["A short window can hide earlier drawdowns."],
         interpretation="Largest peak-to-trough decline inside the window.",
@@ -126,7 +132,7 @@ def simple_moving_average(prices: list[PricePoint], window: int) -> MetricResult
         value=value,
         unit=prices[-1].currency,
         formula=f"mean(close over the last {window} observations)",
-        sampling=f"window={window}",
+        sampling=f"{observation_window(prices)}; window={window}",
         assumptions=["Equal weight for each observation in the window."],
         limitations=["A moving average is a smoother, not a trading signal."],
         interpretation="Average close of the latest window.",
@@ -149,7 +155,7 @@ def historical_distribution(prices: list[PricePoint]) -> list[MetricResult]:
             value=value,
             unit="fraction",
             formula=f"empirical percentile of simple returns ({name[-3:]})",
-            sampling=f"{len(returns)} simple returns",
+            sampling=f"{observation_window(prices)}; {len(returns)} simple returns",
             assumptions=["Each simple return in the window is one observation."],
             limitations=["An empirical percentile is not a calibrated probability of future returns."],
             interpretation="Historical distribution summary, not a forecast.",

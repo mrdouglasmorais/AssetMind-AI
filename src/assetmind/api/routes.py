@@ -15,6 +15,8 @@ from assetmind.domain.assets.identity import AssetRequest
 from assetmind.domain.errors import DomainError
 from assetmind.domain.scenarios.policy import ScenarioAssumptions
 from assetmind.persistence.repository import AnalysisRepository, StoredAnalysis
+from assetmind.providers.errors import ProviderError
+from assetmind.providers.news import fetch_headlines
 from assetmind.security.auth import AuthenticationError, require_api_key
 
 router = APIRouter()
@@ -43,6 +45,20 @@ def search_assets(request: Request, q: str, x_api_key: str | None = Header(defau
         "results": [entry.model_dump(mode="json") for entry in search_catalog(q)],
         "limitation": "Search uses the local catalog, not a live market listing.",
     }
+
+
+@router.get("/api/v1/assets/{symbol}/news")
+async def asset_news(
+    symbol: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+) -> dict[str, object]:
+    _authorize(request, x_api_key)
+    _limit(request, x_api_key or "anonymous")
+    try:
+        return await fetch_headlines(request.app.state.http_client, symbol.strip().upper())
+    except ProviderError as exc:
+        raise HTTPException(status_code=503, detail=exc.message) from exc
 
 
 @router.post("/api/v1/analyses", response_model=AnalysisAccepted)
@@ -78,6 +94,17 @@ async def create_analysis(
         report=report,
         error_code=stored.error_code,
     )
+
+
+@router.get("/api/v1/usage/balance")
+def usage_balance(
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+) -> dict[str, object]:
+    _authorize(request, x_api_key)
+    repository: AnalysisRepository = request.app.state.repository
+    allowance = request.app.state.settings.token_allowance
+    return repository.token_balance(allowance).model_dump()
 
 
 @router.get("/api/v1/analyses/{analysis_id}")

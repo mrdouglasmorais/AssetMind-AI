@@ -37,3 +37,6 @@ Unknown coin id, stale reference price, or provider failure.
 
 ## Evaluation cases
 A null market cap is disclosed as missing.
+
+## Orchestration
+The orchestrator assigns this skill only when the asset class is crypto. The input is the metric card. This skill does not call a model.

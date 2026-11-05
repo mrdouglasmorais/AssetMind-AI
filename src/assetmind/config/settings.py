@@ -65,6 +65,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ASSETMIND_BCB_BASE_URL"),
     )
     skills_dir: str = Field(default="skills", validation_alias=AliasChoices("ASSETMIND_SKILLS_DIR"))
+    token_allowance: int = Field(default=100_000, validation_alias="ASSETMIND_TOKEN_ALLOWANCE")
     max_total_tokens: int = Field(default=4000, validation_alias="ASSETMIND_MAX_TOTAL_TOKENS")
     max_output_tokens: int = Field(default=1200, validation_alias="ASSETMIND_MAX_OUTPUT_TOKENS")
     max_llm_calls: int = Field(default=8, validation_alias="ASSETMIND_MAX_LLM_CALLS")

@@ -7,6 +7,7 @@ copy provider prose, so instruction-like source text cannot enter the narrative.
 from pydantic import BaseModel, Field
 
 from assetmind.domain.analysis.engine import AssetAnalysis
+from assetmind.domain.analysis.metrics import MetricResult
 
 DISCLAIMER = (
     "Material educacional. Nao e recomendacao de investimento, oferta ou promessa de retorno. "
@@ -23,21 +24,47 @@ class ReportDocument(BaseModel):
     assets: list[dict[str, object]] = Field(default_factory=list)
     disclaimer: str = DISCLAIMER
     validation_issues: list[dict[str, str]] = Field(default_factory=list)
+    orchestration: list[str] = Field(default_factory=list)
+    usage: dict[str, object] = Field(default_factory=dict)
 
 
-def compose_report(analyses: list[AssetAnalysis], *, status: str, composer: str) -> ReportDocument:
+_PRICE_SERIES_METRICS = {
+    "reference_price",
+    "compound_return",
+    "annualized_volatility",
+    "maximum_drawdown",
+    "return_p05",
+    "return_p50",
+    "return_p95",
+    "buy_and_hold_backtest",
+    "dividend_yield",
+    "volume",
+    "market_cap",
+}
+
+
+def compose_report(
+    analyses: list[AssetAnalysis],
+    *,
+    status: str,
+    composer: str,
+    orchestration: list[str] | None = None,
+) -> ReportDocument:
     sections: list[dict[str, object]] = []
     issues: list[dict[str, str]] = []
     for analysis in analyses:
-        lines = [_asset_lines(analysis)]
+        synthetic = _synthetic_price(analysis)
+        metrics = _publishable_metrics(analysis, synthetic=synthetic)
+        scenarios = _publishable_scenarios(analysis, synthetic=synthetic)
+        lines = [_asset_lines(analysis, metrics=metrics, scenarios=scenarios, synthetic=synthetic)]
         sections.append(
             {
                 "symbol": analysis.asset.symbol,
                 "asset_class": analysis.asset.asset_class.value,
                 "status": analysis.status,
                 "narrative": "\n".join(lines),
-                "metrics": [metric.model_dump() for metric in analysis.metrics],
-                "scenarios": [scenario.model_dump() for scenario in analysis.scenarios],
+                "metrics": [metric.model_dump() for metric in metrics],
+                "scenarios": scenarios,
                 "uncertainties": analysis.uncertainties,
                 "risks": analysis.risks,
                 "sources": _sources(analysis),
@@ -52,24 +79,84 @@ def compose_report(analyses: list[AssetAnalysis], *, status: str, composer: str)
         summary=summary,
         assets=sections,
         validation_issues=issues,
+        orchestration=orchestration if orchestration is not None else _orchestration(analyses),
     )
 
 
-def _asset_lines(analysis: AssetAnalysis) -> str:
+def _synthetic_price(analysis: AssetAnalysis) -> bool:
+    return any(item.provider == "fixture" and item.metric == "price_close" for item in analysis.evidence)
+
+
+def _from_price_series(name: str) -> bool:
+    return name in _PRICE_SERIES_METRICS or name.startswith("sma_")
+
+
+def _publishable_metrics(analysis: AssetAnalysis, *, synthetic: bool) -> list[MetricResult]:
+    if not synthetic:
+        return list(analysis.metrics)
+    return [metric for metric in analysis.metrics if not _from_price_series(metric.name)]
+
+
+def _publishable_scenarios(analysis: AssetAnalysis, *, synthetic: bool) -> list[dict[str, object]]:
+    published: list[dict[str, object]] = []
+    for scenario in analysis.scenarios:
+        dumped = scenario.model_dump()
+        if synthetic:
+            dumped["shocked_price"] = None
+        published.append(dumped)
+    return published
+
+
+def _asset_lines(
+    analysis: AssetAnalysis,
+    *,
+    metrics: list[MetricResult],
+    scenarios: list[dict[str, object]],
+    synthetic: bool,
+) -> str:
     rows = [f"Ativo {analysis.asset.symbol} ({analysis.asset.asset_class.value}), status {analysis.status}."]
-    if not analysis.metrics:
+    if synthetic:
+        rows.append(
+            "Cotacao de mercado indisponivel. "
+            "A serie local e sintetica de teste e nao e preco, volume ou retorno."
+        )
+    elif not metrics:
         rows.append("Nenhum indicador numerico pode ser apresentado com a evidencia disponivel.")
-    for metric in analysis.metrics:
+    for metric in metrics:
         if metric.value is None:
             rows.append(f"{metric.name}: indisponivel.")
         else:
-            rows.append(f"{metric.name}: {_format_number(metric.value)} {metric.unit}.")
-    for scenario in analysis.scenarios:
-        price = "indisponivel" if scenario.shocked_price is None else _format_number(scenario.shocked_price)
+            rows.append(
+                f"{metric.name}: {_format_number(metric.value)} {metric.unit}. Amostra: {metric.sampling}."
+            )
+    if synthetic:
+        rows.append("Cenarios de preco omitidos: nao ha cotacao de mercado para aplicar o choque.")
+    for scenario in [] if synthetic else scenarios:
+        shocked = scenario.get("shocked_price")
+        price = "indisponivel" if not isinstance(shocked, (int, float)) else _format_number(float(shocked))
+        shock = scenario.get("price_shock")
+        shock_text = "indisponivel" if not isinstance(shock, (int, float)) else _format_number(float(shock))
         rows.append(
-            f"Cenario {scenario.name} ({scenario.label}): choque {_format_number(scenario.price_shock)}, "
-            f"preco ilustrativo {price}. {scenario.disclosure}"
+            f"Cenario {scenario.get('name')} ({scenario.get('label')}): choque {shock_text}, "
+            f"preco ilustrativo {price}. {scenario.get('disclosure')}"
         )
+    if analysis.asset.asset_class.value == "equity":
+        headlines = [
+            item
+            for item in analysis.evidence
+            if item.metric == "headline" and item.text_value and item.quality_status.value == "ok"
+        ][:3]
+        if headlines:
+            rows.append("Manchetes:")
+            for item in headlines:
+                when = item.observed_at.date().isoformat() if item.observed_at else "sem data"
+                rows.append(f"- {item.text_value} | {item.provider} | {when} | {item.source_url}")
+        else:
+            rows.append(
+                "Manchetes: nao incluidas neste relatorio. "
+                "A consulta de noticias devolve ate 3 titulos da fonte Google News. "
+                "O texto da materia nao e copiado."
+            )
     for uncertainty in analysis.uncertainties:
         rows.append(f"Incerteza: {uncertainty}")
     for risk in analysis.risks:
@@ -83,9 +170,24 @@ def _sources(analysis: AssetAnalysis) -> list[str]:
     return sorted({item.provider for item in analysis.evidence if item.provider})
 
 
+def _orchestration(analyses: list[AssetAnalysis]) -> list[str]:
+    grouped: dict[str, list[str]] = {}
+    for analysis in analyses:
+        grouped.setdefault(analysis.asset.asset_class.value, []).append(analysis.asset.symbol)
+    return [f"{name}: {', '.join(symbols)}" for name, symbols in sorted(grouped.items())]
+
+
 def _summary(analyses: list[AssetAnalysis], status: str) -> str:
     symbols = ", ".join(item.asset.symbol for item in analyses) or "nenhum ativo"
-    return f"Analise {status} para {symbols}. Os numeros abaixo repetem os calculos deterministicos."
+    if any(_synthetic_price(item) for item in analyses):
+        return (
+            f"Analise {status} para {symbols}. "
+            "Nenhum preco de mercado foi publicado porque a unica serie disponivel e sintetica de teste."
+        )
+    return (
+        f"Analise {status} para {symbols}. "
+        "Os numeros abaixo repetem os calculos deterministicos e a fonte registrada."
+    )
 
 
 def _format_number(value: float) -> str:

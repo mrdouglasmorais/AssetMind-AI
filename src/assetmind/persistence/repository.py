@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from assetmind.application.budget import BudgetSnapshot
+from assetmind.application.budget import BudgetSnapshot, TokenBalance
 from assetmind.application.report import ReportDocument
 from assetmind.domain.analysis.engine import AssetAnalysis
 from assetmind.persistence.tables import AnalysisEventRow, AnalysisRow, EvidenceRow, UsageRow
@@ -126,6 +126,29 @@ class AnalysisRepository:
                         )
                     )
             session.commit()
+
+    def token_balance(self, allowance_tokens: int) -> TokenBalance:
+        with self._session_factory() as session:
+            rows = session.scalars(select(UsageRow)).all()
+        estimated_input = sum(row.estimated_input_tokens for row in rows)
+        estimated_output = sum(row.estimated_output_tokens for row in rows)
+        actual_input = sum(row.actual_input_tokens or 0 for row in rows)
+        actual_output = sum(row.actual_output_tokens or 0 for row in rows)
+        estimated_tokens = estimated_input + estimated_output
+        estimated_cost = sum(float(row.estimated_cost_usd) for row in rows)
+        return TokenBalance(
+            analyses=len(rows),
+            estimated_input_tokens=estimated_input,
+            estimated_output_tokens=estimated_output,
+            estimated_tokens=estimated_tokens,
+            actual_input_tokens=actual_input,
+            actual_output_tokens=actual_output,
+            llm_calls=sum(row.llm_calls for row in rows),
+            provider_calls=sum(row.provider_calls for row in rows),
+            estimated_cost_usd=estimated_cost,
+            allowance_tokens=allowance_tokens,
+            remaining_tokens=max(0, allowance_tokens - estimated_tokens),
+        )
 
     def get(self, analysis_id: str) -> StoredAnalysis | None:
         with self._session_factory() as session:

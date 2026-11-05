@@ -137,6 +137,11 @@ def _prepare_evidence(snapshot: MarketSnapshot, now: datetime) -> list[Evidence]
         "market_cap": "fundamental",
         "volume": "fundamental",
         "p_vp": "fundamental",
+        "week52_low": "price",
+        "week52_high": "price",
+        "price_to_earnings": "fundamental",
+        "earnings_per_share": "fundamental",
+        "dividend_yield": "fundamental",
         "vacancy_rate": "fundamental",
         "distribution_trailing": "distribution",
     }
@@ -153,27 +158,22 @@ def _current_price(
     asset_class: AssetClass,
     now: datetime,
 ) -> MetricResult | None:
-    price_evidence = [
-        item for item in validation.evidence if item.metric == "price_close" and item.quality_status is QualityStatus.OK
-    ]
-    if not prices or not price_evidence:
+    if not prices:
         return None
-    latest = prices[-1]
-    fresh = [item for item in price_evidence if item.observed_at is not None and item.observed_at == latest.observed_at]
-    if not fresh:
+    fresh: list[Evidence] = []
+    for item in validation.evidence:
+        if item.metric != "price_close":
+            continue
+        checked = assess_freshness(item, asset_class=asset_class, family="price", now=now)
+        if checked.quality_status is QualityStatus.OK and checked.value is not None:
+            fresh.append(checked)
+    if len({item.value for item in fresh}) != 1:
         return None
-    checked = assess_freshness(
-        fresh[-1],
-        asset_class=asset_class,
-        family="price",
-        now=now,
-    )
-    if checked.quality_status is not QualityStatus.OK or checked.value is None:
-        return None
+    chosen = fresh[-1]
     return MetricResult(
         name="reference_price",
-        value=checked.value,
-        unit=checked.currency or latest.currency,
+        value=chosen.value,
+        unit=chosen.currency or prices[-1].currency,
         formula="latest fresh close",
         sampling="last observation inside the freshness window",
         assumptions=["The reference price is the latest non-conflicting fresh close."],
@@ -204,6 +204,8 @@ def _fundamental_metrics(
                 interpretation=f"Observed {name}.",
             )
         )
+    if snapshot.asset.asset_class is AssetClass.EQUITY:
+        metrics.extend(_equity_card(validation))
 
     fund = snapshot.fund
     if fund is None or snapshot.asset.asset_class is not AssetClass.REAL_ESTATE:
@@ -236,6 +238,39 @@ def _fundamental_metrics(
                 assumptions=["P/VP is used only when the source observation is fresh."],
                 limitations=["Accounting book value is not a transaction price for the properties."],
                 interpretation="Reported price-to-book ratio.",
+            )
+        )
+    return metrics
+
+
+def _equity_card(validation: EvidenceValidation) -> list[MetricResult]:
+    specs = (
+        ("week52_low", "BRL", "52-week low reported by the quote"),
+        ("week52_high", "BRL", "52-week high reported by the quote"),
+        ("price_to_earnings", "ratio", "trailing price / earnings reported by the provider"),
+        ("earnings_per_share", "BRL", "trailing earnings per share reported by the provider"),
+        ("p_vp", "ratio", "price / book value reported by the provider"),
+        ("dividend_yield", "fraction", "trailing dividend yield reported by the provider"),
+    )
+    metrics: list[MetricResult] = []
+    for name, unit, formula in specs:
+        observed = [item for item in validation.evidence if item.metric == name]
+        if not observed:
+            continue
+        fresh = _single_ok(validation, name)
+        metrics.append(
+            MetricResult(
+                name=name,
+                value=None if fresh is None else fresh.value,
+                unit=unit if fresh is None or fresh.unit is None else fresh.unit,
+                formula=formula,
+                sampling="provider current observation" if fresh is None else (fresh.period or "current"),
+                assumptions=["The figure is copied from the provider and not recomputed from the 3-month series."],
+                limitations=[
+                    "A missing or stale observation stays empty.",
+                    "The 52-week range is not the return window.",
+                ],
+                interpretation="Reported fundamental or 52-week quote field.",
             )
         )
     return metrics

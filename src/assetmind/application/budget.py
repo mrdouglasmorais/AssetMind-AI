@@ -131,3 +131,29 @@ def _cost(input_tokens: int, output_tokens: int, input_rate: float, output_rate:
 class UsageView(BaseModel):
     estimated: BudgetSnapshot
     note: str = Field(default="Estimated cost uses configured rates and is not an invoice from the model gateway.")
+
+
+class TokenBalance(BaseModel):
+    """Running ledger. Estimated and actual figures stay on separate fields."""
+
+    analyses: int
+    estimated_input_tokens: int
+    estimated_output_tokens: int
+    estimated_tokens: int
+    actual_input_tokens: int
+    actual_output_tokens: int
+    llm_calls: int
+    provider_calls: int
+    estimated_cost_usd: float
+    allowance_tokens: int
+    remaining_tokens: int
+    note: str = "Remaining tokens use the estimated ledger. Actual tokens appear only after a provider reports them."
+
+
+def format_token_balance(balance: TokenBalance) -> str:
+    return (
+        f"Saldo de tokens: {balance.estimated_tokens} estimados em {balance.analyses} analises. "
+        f"Restam {balance.remaining_tokens} de {balance.allowance_tokens}. "
+        f"Modelo: {balance.llm_calls} chamadas. Provedores: {balance.provider_calls} chamadas. "
+        f"Custo estimado: {balance.estimated_cost_usd:.6f} USD. {balance.note}"
+    )

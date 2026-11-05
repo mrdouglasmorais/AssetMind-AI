@@ -1,0 +1,193 @@
+import httpx
+import pytest
+
+from assetmind.agents.chat import _headline_text, _periods_tool, _shock_tool, answer_message
+from assetmind.api.app import create_app
+from assetmind.config.settings import Settings
+from assetmind.domain.assets.identity import AssetClass, AssetRequest
+from assetmind.domain.periods import continues_session, intake_question, periods_for
+from assetmind.providers.errors import ProviderError
+from assetmind.providers.news import fetch_headlines, parse_headlines
+
+_FEED = """<?xml version="1.0"?>
+<rss><channel>
+<item>
+<title>Titulo um</title>
+<link>https://news.google.com/rss/articles/a</link>
+<pubDate>Wed, 04 Nov 2026 18:00:00 GMT</pubDate>
+<source>Fonte A</source>
+</item>
+<item><title>Titulo dois</title><link>https://news.google.com/rss/articles/b</link></item>
+<item><title>Titulo tres</title><link>https://news.google.com/rss/articles/c</link></item>
+<item><title>Titulo quatro</title><link>https://news.google.com/rss/articles/d</link></item>
+</channel></rss>"""
+
+
+def test_headlines_keep_three_titles_and_drop_the_rest() -> None:
+    items = parse_headlines(_FEED)
+    assert len(items) == 3
+    assert items[0]["title"] == "Titulo um"
+    assert items[0]["publisher"] == "Fonte A"
+    assert items[0]["published_at"] == "2026-11-04T18:00:00+00:00"
+
+
+def test_periods_keep_the_return_window_separate_from_52_weeks() -> None:
+    lines = periods_for(AssetClass.EQUITY)
+    assert any("3 meses" in line for line in lines)
+    assert any("52 semanas" in line and "separado" in line for line in lines)
+
+
+def test_a_broad_request_asks_which_blocks_belong() -> None:
+    question = intake_question("analise completa PETR4", [])
+    assert question is not None
+    assert "manchetes" in question
+
+
+def test_a_projection_asks_for_a_horizon_before_it_runs() -> None:
+    question = intake_question("projecao de valorizacao PETR4", [])
+    assert question is not None
+    assert "Nao e uma projecao" in question
+
+
+def test_missing_class_horizon_and_news_each_ask_one_question() -> None:
+    ambiguous = intake_question("analise ABCD11", [AssetRequest(symbol="ABCD11")])
+    assert ambiguous is not None
+    assert "fundo imobiliario" in ambiguous
+    assert intake_question("noticias", []) == "De qual ativo devo buscar as manchetes?"
+    long_window = intake_question("retorno em 5 anos da PETR4", [])
+    assert long_window is not None
+    assert "3 meses" in long_window
+    assert continues_session("12 meses") is True
+    assert continues_session("os dois") is True
+
+
+def test_invalid_or_incomplete_feed_items_are_dropped() -> None:
+    with pytest.raises(ProviderError):
+        parse_headlines("<rss>")
+    blank = "<rss><channel><item><title>   </title><link>https://news.google.com/a</link></item></channel></rss>"
+    assert parse_headlines(blank) == []
+    kept = parse_headlines("<rss><channel><item><title>Um</title><link>https://news.google.com/a</link></item></channel></rss>")
+    assert kept[0]["publisher"] == "Google News"
+    assert kept[0]["published_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_news_lookup_reports_a_source_failure() -> None:
+    class _Down:
+        async def get(self, url: str, timeout: float = 8, follow_redirects: bool = True) -> object:
+            raise httpx.ConnectError("down")
+
+    with pytest.raises(ProviderError):
+        await fetch_headlines(_Down(), "PETR4")  # type: ignore[arg-type]
+
+    class _Rejected:
+        status_code = 503
+        text = ""
+
+        async def get(self, url: str, timeout: float = 8, follow_redirects: bool = True) -> "_Rejected":
+            return self
+
+    with pytest.raises(ProviderError):
+        await fetch_headlines(_Rejected(), "PETR4")  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_news_only_turn_names_the_source_and_does_not_analyze(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake(client: object, symbol: str, *, limit: int = 3) -> dict[str, object]:
+        return {
+            "symbol": symbol,
+            "source": "Google News",
+            "source_url": "https://news.google.com/rss/search?q=PETR4",
+            "window": "7d",
+            "items": [
+                {
+                    "title": "Titulo um",
+                    "publisher": "Fonte A",
+                    "published_at": "2026-11-04T18:00:00+00:00",
+                    "url": "https://news.google.com/rss/articles/a",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("assetmind.agents.chat.fetch_headlines", _fake)
+
+    class _Idle:
+        async def run(self, **_kwargs: object) -> object:
+            raise AssertionError("news only must not run the analysis")
+
+    text = await answer_message(_Idle(), Settings(api_key="local"), "noticias PETR4")  # type: ignore[arg-type]
+    assert "Fonte de consulta: Google News." in text
+    assert "Titulo um" in text
+    assert "nao e copiado" in text
+
+
+@pytest.mark.asyncio
+async def test_tools_ask_for_class_or_horizon_and_list_periods() -> None:
+    periods = _periods_tool()
+    listed = await periods.entrypoint(asset_class="acao")
+    assert "3 meses" in listed
+    unknown = await periods.entrypoint(asset_class="outro")
+    assert "acao, fii ou cripto" in unknown
+    shocks = _shock_tool(None, Settings(api_key="local"), None)  # type: ignore[arg-type]
+    asked = await shocks.entrypoint(symbol="PETR4", horizon_label="  ")
+    assert "horizonte" in asked
+
+
+@pytest.mark.asyncio
+async def test_headline_text_reports_a_source_outage(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _down(client: object, symbol: str, *, limit: int = 3) -> dict[str, object]:
+        raise ProviderError("timeout", provider="google-news")
+
+    monkeypatch.setattr("assetmind.agents.chat.fetch_headlines", _down)
+    text = await _headline_text("PETR4")
+    assert "Fonte de consulta: Google News." in text
+    assert "timeout" in text
+
+
+@pytest.mark.asyncio
+async def test_complete_analysis_asks_and_does_not_fetch(tmp_path: object) -> None:
+    class _Idle:
+        async def run(self, **_kwargs: object) -> object:
+            raise AssertionError("a broad request must ask before fetching")
+
+    text = await answer_message(
+        _Idle(),  # type: ignore[arg-type]
+        Settings(api_key="local", database_url=f"sqlite+pysqlite:///{tmp_path}/unused.db"),  # type: ignore[operator]
+        "analise completa da PETR4",
+    )
+    assert "manchetes" in text
+
+
+@pytest.mark.asyncio
+async def test_news_route_returns_the_source_and_three_headlines(tmp_path: object) -> None:
+    class _Response:
+        status_code = 200
+        text = _FEED
+
+    class _Client:
+        async def get(self, url: str, timeout: float = 8, follow_redirects: bool = True) -> _Response:
+            assert url.startswith("https://news.google.com/rss/search?")
+            assert "PETR4" in url
+            return _Response()
+
+    database = tmp_path / "news.db"  # type: ignore[operator]
+    app = create_app(
+        Settings(
+            api_key="test-key-123",
+            provider_mode="fixtures",
+            database_url=f"sqlite+pysqlite:///{database}",
+            agentos_enabled=False,
+            agentos_jwt_secret=None,
+            groq_api_key=None,
+        )
+    )
+    app.state.http_client = _Client()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/assets/PETR4/news", headers={"X-API-Key": "test-key-123"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "Google News"
+    assert body["window"] == "7d"
+    assert len(body["items"]) == 3
+    assert body["items"][0]["title"] == "Titulo um"

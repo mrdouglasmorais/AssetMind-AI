@@ -49,14 +49,14 @@ watch:
 	export NEXT_PUBLIC_AGENT_OS_URL="http://127.0.0.1:$(PORT)"; \
 	export NEXT_PUBLIC_OS_SECURITY_KEY="$${ASSETMIND_AGENT_UI_TOKEN:-$${ASSETMIND_OS_SECURITY_KEY:-$$ASSETMIND_API_KEY}}"; \
 	test -d ui/agent-ui/node_modules || $(MAKE) ui-install; \
-	uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT) --reload --reload-dir src & \
+	PYTHONPATH=src uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT) --reload --reload-dir src & \
 	api_pid=$$!; \
 	trap 'kill $$api_pid' EXIT INT TERM; \
 	cd ui/agent-ui && corepack pnpm dev
 
 run:
 	ASSETMIND_AGENTOS_ENABLED=$${ASSETMIND_AGENTOS_ENABLED:-true} \
-	uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT)
+	PYTHONPATH=src uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT)
 
 build:
 	docker build -t $(IMAGE) .

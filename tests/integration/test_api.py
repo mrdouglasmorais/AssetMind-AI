@@ -60,6 +60,16 @@ async def test_public_health_and_authenticated_analysis(api_client: httpx.AsyncC
 
 
 @pytest.mark.asyncio
+async def test_usage_balance_reports_the_allowance(api_client: httpx.AsyncClient) -> None:
+    response = await api_client.get("/api/v1/usage/balance", headers={"X-API-Key": "test-key-123"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["analyses"] == 0
+    assert body["remaining_tokens"] == body["allowance_tokens"]
+    assert body["estimated_tokens"] == 0
+
+
+@pytest.mark.asyncio
 async def test_invalid_symbol_and_agentos_disabled(api_client: httpx.AsyncClient) -> None:
     response = await api_client.post(
         "/api/v1/analyses",

@@ -75,7 +75,33 @@ class BrapiProvider:
         self.breaker.record_success()
         evidence, currency = normalize_quote(quote, asset.symbol, now, quote_url)
         prices = normalize_history(history, asset.symbol, currency or "BRL")
+        if asset.asset_class.value == "equity":
+            evidence.extend(
+                await self._statistics(asset.symbol, params, now, currency),
+            )
         return MarketSnapshot(asset=asset, prices=prices, evidence=evidence)
+
+    async def _statistics(
+        self,
+        symbol: str,
+        params: dict[str, str],
+        now: datetime,
+        currency: str | None,
+    ) -> list[Evidence]:
+        source_url = f"{self.base_url}/api/v2/stocks/statistics"
+        try:
+            payload = await get_json(
+                self.client,
+                source_url,
+                provider=self.name,
+                allowed_hosts=self.allowed_hosts,
+                params={**params, "mode": "current"},
+                timeout=self.timeout,
+                max_retries=self.max_retries,
+            )
+        except ProviderError:
+            return []
+        return normalize_statistics(payload, symbol, now, source_url, currency)
 
 
 def normalize_quote(
@@ -99,6 +125,28 @@ def normalize_quote(
             retrieved_at=retrieved_at,
             source_url=source_url,
             period="spot",
+        ),
+        _metric(
+            symbol=symbol,
+            metric="week52_low",
+            value=_optional_float(data.get("fiftyTwoWeekLow")),
+            unit=currency,
+            currency=currency,
+            observed_at=observed_at,
+            retrieved_at=retrieved_at,
+            source_url=source_url,
+            period="52w",
+        ),
+        _metric(
+            symbol=symbol,
+            metric="week52_high",
+            value=_optional_float(data.get("fiftyTwoWeekHigh")),
+            unit=currency,
+            currency=currency,
+            observed_at=observed_at,
+            retrieved_at=retrieved_at,
+            source_url=source_url,
+            period="52w",
         ),
         _metric(
             symbol=symbol,
@@ -126,18 +174,60 @@ def normalize_quote(
     return evidence, currency
 
 
+def normalize_statistics(
+    payload: dict[str, Any],
+    symbol: str,
+    retrieved_at: datetime,
+    source_url: str,
+    currency: str | None,
+) -> list[Evidence]:
+    """Current multiples. A null field stays missing and is not replaced with zero."""
+
+    row = _result_for(payload, symbol)
+    data = _data(row)
+    quarter = _optional_str(data.get("mostRecentQuarter"))
+    period = f"current; quarter {quarter}" if quarter else "current"
+    fields = (
+        ("p_vp", "priceToBook", "ratio", None),
+        ("price_to_earnings", "trailingPE", "ratio", None),
+        ("earnings_per_share", "earningsPerShare", currency, currency),
+        ("dividend_yield", "dividendYield", "fraction", None),
+    )
+    return [
+        _metric(
+            symbol=symbol,
+            metric=metric,
+            value=_optional_float(data.get(field)),
+            unit=unit,
+            currency=item_currency,
+            observed_at=retrieved_at,
+            retrieved_at=retrieved_at,
+            source_url=source_url,
+            period=period,
+        )
+        for metric, field, unit, item_currency in fields
+    ]
+
+
 def normalize_history(payload: dict[str, Any], symbol: str, currency: str) -> list[PricePoint]:
     row = _result_for(payload, symbol)
     data = _data(row)
-    points: list[PricePoint] = []
+    parsed: list[tuple[datetime, float | None, float | None]] = []
     for item in data.get("historicalDataPrice") or []:
         if not isinstance(item, dict):
             continue
-        close = _optional_float(item.get("adjustedClose"))
-        if close is None:
-            close = _optional_float(item.get("close"))
         observed_at = _parse_unix(item.get("date"))
-        if close is None or observed_at is None or close <= 0:
+        raw = _positive(item.get("close"))
+        adjusted = _positive(item.get("adjustedClose"))
+        if observed_at is None or (raw is None and adjusted is None):
+            continue
+        parsed.append((observed_at, raw, adjusted))
+    # One missing adjusted close must not splice a raw print onto an adjusted series.
+    use_adjusted = bool(parsed) and all(adjusted is not None for _, _, adjusted in parsed)
+    points: list[PricePoint] = []
+    for observed_at, raw, adjusted in parsed:
+        close = adjusted if use_adjusted else raw
+        if close is None:
             continue
         points.append(PricePoint(observed_at=observed_at, close=close, currency=currency))
     return points
@@ -188,6 +278,13 @@ def _metric(
         period=period,
         quality_status=QualityStatus.OK if value is not None else QualityStatus.MISSING,
     )
+
+
+def _positive(value: object) -> float | None:
+    number = _optional_float(value)
+    if number is None or number <= 0:
+        return None
+    return number
 
 
 def _optional_float(value: object) -> float | None:

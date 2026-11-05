@@ -7,7 +7,7 @@ import pytest
 from assetmind.application.report import compose_report, parse_structured_narrative
 from assetmind.domain.errors import StructuredOutputError
 from assetmind.providers.bcb import normalize_selic
-from assetmind.providers.brapi import normalize_history, normalize_quote
+from assetmind.providers.brapi import normalize_history, normalize_quote, normalize_statistics
 from assetmind.providers.cache import MarketCache
 from assetmind.providers.circuit import CircuitBreaker
 from assetmind.providers.coingecko import normalize_chart, normalize_markets
@@ -43,6 +43,63 @@ def test_brapi_v2_quote_keeps_null_market_cap() -> None:
     assert by_name["market_cap"].quality_status.value == "missing"
 
 
+def test_quote_keeps_the_52_week_range_separate_from_the_return_window() -> None:
+    now = datetime(2026, 11, 4, tzinfo=UTC)
+    evidence, _currency = normalize_quote(
+        {
+            "results": [
+                {
+                    "symbol": "NATU3",
+                    "data": {
+                        "currency": "BRL",
+                        "regularMarketPrice": 10,
+                        "regularMarketTime": "2026-11-04T21:00:00+00:00",
+                        "fiftyTwoWeekLow": 4,
+                        "fiftyTwoWeekHigh": 12,
+                    },
+                }
+            ]
+        },
+        "NATU3",
+        now,
+        "https://brapi.dev/api/v2/stocks/quote",
+    )
+    by_name = {item.metric: item for item in evidence}
+    assert by_name["week52_low"].value == 4
+    assert by_name["week52_high"].value == 12
+    assert by_name["week52_low"].period == "52w"
+
+
+def test_statistics_copy_reported_multiples_and_keep_nulls() -> None:
+    now = datetime(2026, 11, 4, tzinfo=UTC)
+    evidence = normalize_statistics(
+        {
+            "results": [
+                {
+                    "symbol": "NATU3",
+                    "data": {
+                        "priceToBook": 0.5,
+                        "trailingPE": None,
+                        "earningsPerShare": -0.25,
+                        "dividendYield": 0.0,
+                        "mostRecentQuarter": "2026-09-30",
+                    },
+                }
+            ]
+        },
+        "NATU3",
+        now,
+        "https://brapi.dev/api/v2/stocks/statistics",
+        "BRL",
+    )
+    by_name = {item.metric: item for item in evidence}
+    assert by_name["p_vp"].value == 0.5
+    assert by_name["price_to_earnings"].value is None
+    assert by_name["earnings_per_share"].value == -0.25
+    assert by_name["dividend_yield"].value == 0.0
+    assert "2026-09-30" in (by_name["p_vp"].period or "")
+
+
 def test_history_skips_non_positive_closes() -> None:
     points = normalize_history(
         {
@@ -63,6 +120,27 @@ def test_history_skips_non_positive_closes() -> None:
     )
     assert len(points) == 1
     assert points[0].close == 10
+
+
+def test_history_keeps_one_price_scale_when_adjusted_close_is_missing() -> None:
+    points = normalize_history(
+        {
+            "results": [
+                {
+                    "symbol": "PETR4",
+                    "data": {
+                        "historicalDataPrice": [
+                            {"date": 1762200000, "close": 40.87, "adjustedClose": 39.77},
+                            {"date": 1762286400, "close": 47.12, "adjustedClose": None},
+                        ]
+                    },
+                }
+            ]
+        },
+        "PETR4",
+        "BRL",
+    )
+    assert [point.close for point in points] == [40.87, 47.12]
 
 
 def test_coingecko_and_selic_normalization() -> None:
@@ -167,6 +245,24 @@ def test_report_excludes_injected_source_text() -> None:
     assert "prompt_injection_excluded" in rendered
     with pytest.raises(StructuredOutputError):
         parse_structured_narrative("not-an-object")
+
+
+async def test_fixture_series_is_not_published_as_a_quote() -> None:
+    from assetmind.domain.analysis.engine import analyze_snapshot
+    from assetmind.domain.assets.identity import AssetRequest, resolve_asset
+    from assetmind.domain.scenarios.policy import resolve_scenarios
+    from assetmind.providers.fixtures import FixtureMarketProvider
+
+    now = datetime(2026, 11, 4, tzinfo=UTC)
+    snapshot = await FixtureMarketProvider().fetch(resolve_asset(AssetRequest(symbol="PETR4")), as_of=None, now=now)
+    analysis = analyze_snapshot(snapshot, scenarios=resolve_scenarios(None), now=now, as_of=None)
+    report = compose_report([analysis], status="completed", composer="deterministic")
+    rendered = json.dumps(report.model_dump())
+    assert "11.0000" not in rendered
+    assert "10.3333" not in rendered
+    assert "1000.0000" not in rendered
+    assert "sintetica" in rendered
+    assert report.assets[0]["metrics"] == []
 
 
 async def _noop(_: float) -> None:

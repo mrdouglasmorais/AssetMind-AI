@@ -21,20 +21,20 @@ from assetmind.workflows.context_store import RunContext, get_run
 def build_analysis_workflow() -> Workflow:
     # Agno 3.1.12 accepts these executors at runtime. Its published type aliases
     # are narrower than the constructors used by the official examples.
-    fetch = Parallel(
-        Step(name="fetch-equity", executor=fetch_equity),  # pyright: ignore[reportArgumentType]
-        Step(name="fetch-crypto", executor=fetch_crypto),  # pyright: ignore[reportArgumentType]
-        Step(name="fetch-real-estate", executor=fetch_real_estate),  # pyright: ignore[reportArgumentType]
-        name="fetch",
+    specialists = Parallel(
+        Step(name="specialist-equity", executor=fetch_equity),  # pyright: ignore[reportArgumentType]
+        Step(name="specialist-crypto", executor=fetch_crypto),  # pyright: ignore[reportArgumentType]
+        Step(name="specialist-real-estate", executor=fetch_real_estate),  # pyright: ignore[reportArgumentType]
+        name="specialists",
     )
     return Workflow(  # pyright: ignore[reportArgumentType]
         name="assetmind-analysis",
-        description="Validate, fetch, calculate, verify, and report without an autonomous routing model.",
+        description="An orchestrator routes each asset to one specialist. Specialists calculate in Python.",
         telemetry=False,
         steps=[
             Step(name="validate", executor=validate_step),
-            Step(name="plan", executor=plan_step),
-            fetch,
+            Step(name="orchestrate", executor=orchestrate_step),
+            specialists,
             Step(name="analyze", executor=analyze_step),
             Step(name="verify", executor=verify_step),
             Step(name="report", executor=report_step),
@@ -52,13 +52,19 @@ async def validate_step(step_input: StepInput) -> StepOutput:
     return StepOutput(content={"assets": len(context.assets)})
 
 
-async def plan_step(step_input: StepInput) -> StepOutput:
+async def orchestrate_step(step_input: StepInput) -> StepOutput:
+    """Assign each asset to one specialist. Routing does not call a model."""
+
     context = get_run(_analysis_id(step_input))
     _ensure_active(context)
     context.machine.move(RunState.PLANNING)
-    classes = sorted({asset.asset_class.value for asset in context.assets})
+    grouped: dict[str, list[str]] = {}
+    for asset in context.assets:
+        grouped.setdefault(asset.asset_class.value, []).append(asset.symbol)
+    context.route = [f"{name}: {', '.join(symbols)}" for name, symbols in sorted(grouped.items())]
+    context.route.append("narrator: optional single call over the metric card")
     context.machine.move(RunState.FETCHING)
-    return StepOutput(content={"classes": classes})
+    return StepOutput(content={"route": context.route})
 
 
 async def fetch_equity(step_input: StepInput) -> StepOutput:
@@ -93,7 +99,12 @@ async def report_step(step_input: StepInput) -> StepOutput:
     _ensure_active(context)
     status = _terminal_status(context)
     context.machine.move(status)
-    context.report = compose_report(context.analyses, status=status.value, composer="deterministic")
+    context.report = compose_report(
+        context.analyses,
+        status=status.value,
+        composer="deterministic",
+        orchestration=context.route,
+    )
     return StepOutput(content={"status": status.value})
 
 

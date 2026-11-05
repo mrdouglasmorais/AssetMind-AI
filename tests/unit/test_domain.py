@@ -66,6 +66,36 @@ def test_stale_price_is_not_used_as_the_reference() -> None:
     assert analysis.scenarios == []
 
 
+def test_a_fresh_quote_is_the_reference_when_the_daily_bar_has_another_clock_time() -> None:
+    now = datetime(2026, 11, 4, 21, 30, tzinfo=UTC)
+    prices = _prices(now, [40, 45, 47.12])
+    evidence = [
+        Evidence(
+            provider="brapi",
+            asset_id="PETR4",
+            observed_at=now - timedelta(minutes=5),
+            retrieved_at=now,
+            metric="price_close",
+            value=47.12,
+            currency="BRL",
+            quality_status=QualityStatus.OK,
+        )
+    ]
+    analysis = analyze_snapshot(
+        MarketSnapshot(
+            asset=resolve_asset(AssetRequest(symbol="PETR4")),
+            prices=prices,
+            evidence=evidence,
+        ),
+        scenarios=resolve_scenarios(None),
+        now=now,
+        as_of=None,
+    )
+    reference = next(metric for metric in analysis.metrics if metric.name == "reference_price")
+    assert reference.value == pytest.approx(47.12)
+    assert analysis.scenarios
+
+
 def test_conflicting_prices_are_not_averaged() -> None:
     now = datetime(2026, 11, 4, tzinfo=UTC)
     observed = now - timedelta(hours=1)

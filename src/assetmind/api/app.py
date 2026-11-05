@@ -96,6 +96,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.settings = runtime
+    app.state.http_client = client
     app.state.service = service
     app.state.repository = repository
     app.state.ping = lambda: ping(engine)

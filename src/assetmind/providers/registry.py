@@ -48,7 +48,7 @@ class ProviderRegistry:
         if cached is not None and _cache_is_usable(cached, now):
             return cached
 
-        self._reserve(2)
+        self._reserve(3 if asset.asset_class is AssetClass.EQUITY else 2)
         if asset.asset_class is AssetClass.CRYPTO:
             async with self.semaphores["coingecko"]:
                 snapshot = await self.coingecko.fetch(asset, as_of=as_of, now=now)  # type: ignore[attr-defined]

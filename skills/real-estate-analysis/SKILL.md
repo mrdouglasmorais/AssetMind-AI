@@ -37,3 +37,6 @@ A brick fixture may report vacancy. A paper fixture must not.
 
 ## Evaluation cases
 A paper fund with a vacancy field produces no vacancy metric.
+
+## Orchestration
+The orchestrator assigns this skill only when the asset class is real estate and the caller named that class. The input is the metric card. This skill does not call a model.

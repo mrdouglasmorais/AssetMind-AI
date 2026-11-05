@@ -10,6 +10,7 @@ def test_chat_resolves_catalog_names_and_aliases() -> None:
     assets = assets_from_message("Compare Petrobras with BTC and HGLG11")
     symbols = [asset.symbol for asset in assets]
     assert symbols == ["PETR4", "HGLG11", "bitcoin"]
+    assert [asset.symbol for asset in assets_from_message("analise completa NATU3")] == ["NATU3"]
 
 
 @pytest.mark.asyncio
@@ -30,6 +31,8 @@ async def test_agent_ui_run_uses_the_deterministic_report(tmp_path: object) -> N
         provider_mode="fixtures",
         database_url=f"sqlite+pysqlite:///{database}",
         agentos_enabled=True,
+        agentos_jwt_secret=None,
+        groq_api_key=None,
         os_security_key="ui-token",
     )
     app = create_app(settings)

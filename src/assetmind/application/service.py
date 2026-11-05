@@ -110,6 +110,8 @@ class AnalysisService:
                 status=context.machine.state.value,
                 composer="deterministic",
             )
+        if context.report is not None:
+            context.report = context.report.model_copy(update={"usage": budget.snapshot().model_dump()})
         self.repository.save_result(
             analysis_id=context.analysis_id,
             status=context.machine.state.value,

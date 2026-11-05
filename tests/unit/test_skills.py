@@ -13,6 +13,9 @@ def test_runtime_skills_load_without_a_model_call() -> None:
         "real-estate-analysis",
         "scenario-analysis",
         "evidence-review",
+        "orchestration",
+        "token-balance",
+        "market-news",
     }
     report = build_report_agent(
         model_id="openai/gpt-test",

@@ -25,7 +25,7 @@ def test_chat_agent_uses_groq_when_the_key_is_configured() -> None:
     agent = build_chat_agent(service=None, settings=settings)  # type: ignore[arg-type]
     assert isinstance(agent.model, Groq)
     assert agent.model.id == "openai/gpt-oss-120b"
-    assert len(agent.tools) == 1
+    assert len(agent.tools) == 4
 
 
 def test_chat_agent_stays_deterministic_without_a_groq_key() -> None:

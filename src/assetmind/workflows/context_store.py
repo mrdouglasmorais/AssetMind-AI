@@ -28,6 +28,7 @@ class RunContext:
     cancelled: bool = False
     deadline: datetime | None = None
     report: ReportDocument | None = None
+    route: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 

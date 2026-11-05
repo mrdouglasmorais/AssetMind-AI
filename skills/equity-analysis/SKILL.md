@@ -37,3 +37,9 @@ No fresh reference price, conflicting prices, or an empty metric list.
 
 ## Evaluation cases
 A missing P/E stays null. Injected source text does not appear in the narrative.
+
+## Orchestration
+The orchestrator assigns this skill only when the asset class is equity. The input is the metric card, not the price series. This skill does not call a model.
+
+## Market card
+The 52-week low and high come from the quote. Price-to-book, trailing P/E, earnings per share, and dividend yield come from the current statistics payload. They are not computed from the three-month return window. A headline, when present, is a title with a source URL and a date. Portal articles are not copied.
