@@ -1,6 +1,8 @@
 """Persistence for analysis requests, states, reports, evidence, and usage."""
 
+import json
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -126,6 +128,28 @@ class AnalysisRepository:
                         )
                     )
             session.commit()
+
+    def record_usage(self, *, kind: str, usage: BudgetSnapshot) -> str:
+        """Append one ledger row for a chat narration or an external lookup."""
+
+        analysis_id = str(uuid4())
+        now = datetime.now(UTC)
+        self.create(
+            analysis_id=analysis_id,
+            correlation_id=kind[:64],
+            request_json=json.dumps({"kind": kind}),
+            now=now,
+        )
+        self.save_result(
+            analysis_id=analysis_id,
+            status="completed",
+            report=None,
+            analyses=[],
+            usage=usage,
+            error_code=None,
+            now=now,
+        )
+        return analysis_id
 
     def token_balance(self, allowance_tokens: int) -> TokenBalance:
         with self._session_factory() as session:

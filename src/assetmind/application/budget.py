@@ -124,6 +124,29 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def narration_snapshot(
+    limits: BudgetLimits,
+    text: str,
+    output_tokens: int,
+    *,
+    actual_input_tokens: int = 0,
+    actual_output_tokens: int = 0,
+) -> BudgetSnapshot:
+    """Reserve one narration. Actual tokens are recorded only when the run reports them."""
+
+    manager = BudgetManager(limits)
+    manager.authorize_llm_call(estimate_tokens(text), output_tokens)
+    if actual_input_tokens or actual_output_tokens:
+        manager.record_actual_usage(actual_input_tokens, actual_output_tokens)
+    return manager.snapshot()
+
+
+def provider_probe_snapshot() -> BudgetSnapshot:
+    manager = BudgetManager()
+    manager.consume_provider_call()
+    return manager.snapshot()
+
+
 def _cost(input_tokens: int, output_tokens: int, input_rate: float, output_rate: float) -> float:
     return (input_tokens / 1_000_000) * input_rate + (output_tokens / 1_000_000) * output_rate
 
@@ -148,6 +171,19 @@ class TokenBalance(BaseModel):
     allowance_tokens: int
     remaining_tokens: int
     note: str = "Remaining tokens use the estimated ledger. Actual tokens appear only after a provider reports them."
+
+
+def assert_narration_allowed(
+    limits: BudgetLimits,
+    balance: TokenBalance,
+    text: str,
+    output_tokens: int,
+) -> BudgetSnapshot:
+    snapshot = narration_snapshot(limits, text, output_tokens)
+    reserved = snapshot.estimated_input_tokens + snapshot.estimated_output_tokens
+    if reserved > balance.remaining_tokens:
+        raise BudgetExceededError("Token allowance exceeded.")
+    return snapshot
 
 
 def format_token_balance(balance: TokenBalance) -> str:

@@ -192,7 +192,7 @@ Guardrails de uma análise básica, antes de multiplicar pelo número de ativos:
 
 São limites de engenharia, não custo medido em produção. Uso estimado e uso real ficam em campos separados. Estourar o orçamento encerra a rodada e devolve resultado parcial quando alguma métrica já existe.
 
-O caminho versionado faz roteamento, busca e conta em Python. O compositor copia essas métricas para o português e deixa de fora o texto livre do provedor. Isso também impede que uma frase vinda da fonte entre no relatório como instrução. Com `GROQ_API_KEY`, o analista do Agent UI pede esse relatório a uma ferramenta e só pode repetir os números dela. Sem a chave, a mesma resposta sai direto. A suíte de testes não gasta token pago.
+O caminho versionado faz roteamento, busca e conta em Python. O compositor copia essas métricas para o português e deixa de fora o texto livre do provedor. Isso também impede que uma frase vinda da fonte entre no relatório como instrução. Com `GROQ_API_KEY`, o analista do Agent UI pede esse relatório a uma ferramenta e só pode repetir os números dela. Antes da chamada, a narração reserva tokens no teto da chamada e na franquia restante. A recusa acontece quando a reserva não cabe. A linha do ledger guarda a reserva em separado dos tokens que o modelo reportar. Uma consulta de manchetes entra como chamada de provedor, sem token de modelo. Sem a chave, a mesma resposta sai direto. A suíte de testes não gasta token pago.
 
 ## Fontes de dados
 
@@ -215,9 +215,9 @@ O mesmo conjunto, separado: `make lint`, `make typecheck` e `make test`.
 
 A suíte padrão usa fixtures e `MockTransport`. Ela não chama modelo pago nem API de mercado. A meta de cobertura do pacote é 85%.
 
-Verificado neste workspace em 4 de novembro de 2026:
+Verificado neste workspace em 5 de novembro de 2026:
 
-- Ruff, Pyright e pytest passaram. A cobertura ficou em 86,56%, com 28 testes.
+- Ruff, Pyright e pytest passaram. A cobertura ficou em 86,95%, com 66 testes.
 - A imagem `assetmind-ai:local` respondeu `/health`, `/ready` e uma análise fixture de ação, cripto e FII, com zero chamadas de modelo.
 - brapi (`PETR4`), a série 432 do Banco Central e o CoinGecko (`bitcoin`) responderam HTTP 200. Essas chamadas ficam fora da suíte.
 

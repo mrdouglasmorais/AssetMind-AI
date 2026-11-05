@@ -9,3 +9,5 @@ Decision: Persist each turn in a SQLite table with a deterministic hashed embedd
 Alternatives: Replay every Agno run, or call an embedding model for the index.
 
 Consequences: Follow-ups can reuse the prior asset set without a second model call for retrieval. The index is not a market-data store and does not rank investments. Tests do not call Groq.
+
+The embedding is a hashed bag of tokens in 64 buckets. It matches shared words. A paraphrase with no shared token has cosine zero and is not retrieved. Bucket collisions can make unrelated tokens look closer than they are. Recall always keeps the first user question, so the result is not pure similarity. Search is brute force inside one session. These limits are covered by retrieval evaluations, not by an embedding-model score.

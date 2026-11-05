@@ -18,7 +18,7 @@ Symbol. The source is Google News RSS for the last 7 days.
 The news lookup on `news.google.com` only. Do not fetch an article URL from the headline.
 
 ## Domain rules
-Keep the title, publisher, publication time, and link. Do not copy the article body. At most three items.
+Keep the title, publisher, publication time, retrieval time, and link. Do not copy the article body. At most three items. Drop a link that is not https, that carries credentials, or that points at a local host. Drop a repeated title or URL. A title or link that contains the symbol is marked `symbol`. The others stay `search`, because the feed was already queried for that symbol.
 
 ## Calculation requirements
 None. A headline is not a return.

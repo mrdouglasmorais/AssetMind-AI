@@ -1,8 +1,31 @@
+import hashlib
+
 from assetmind.agents.chat import answer_message, resolve_assets
 from assetmind.application.session_vectors import SessionVectorStore
 from assetmind.config.settings import Settings
 from assetmind.domain.assets.catalog import CATALOG
-from assetmind.domain.memory.vectors import cosine, embed
+from assetmind.domain.memory.vectors import cosine, embed, rank_documents
+
+
+def test_retrieval_prefers_shared_words_and_misses_a_paraphrase() -> None:
+    documents = [
+        "analise o bitcoin",
+        "analise a petrobras",
+        "quero saber o resultado",
+    ]
+    ranked = rank_documents("preco do bitcoin", documents)
+    assert ranked[0][1] == "analise o bitcoin"
+    lexical = rank_documents("preco do bitcoin", ["analise o bitcoin"])[0][0]
+    paraphrase = rank_documents("situacao daquela criptomoeda agora", ["analise o bitcoin"])[0][0]
+    assert paraphrase < lexical
+    target = hashlib.sha256(b"bitcoin").digest()[0] % 64
+    collision = next(
+        word
+        for number in range(10000)
+        if (word := f"zz{number}")
+        and hashlib.sha256(word.encode()).digest()[0] % 64 == target
+    )
+    assert cosine(embed("bitcoin"), embed(collision)) != 0
 
 
 def test_similar_questions_rank_above_unrelated_text() -> None:

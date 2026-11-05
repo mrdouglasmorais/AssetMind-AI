@@ -1,15 +1,19 @@
 """Provider registry. Callers cannot pass an arbitrary URL."""
 
 import asyncio
-from datetime import datetime, timedelta
+from collections.abc import Coroutine
+from datetime import UTC, datetime, timedelta
+from typing import Any, TypeVar
 
 from assetmind.application.budget import BudgetManager
 from assetmind.domain.analysis.engine import MarketSnapshot
 from assetmind.domain.assets.identity import AssetClass, ResolvedAsset
-from assetmind.domain.errors import BudgetExceededError
+from assetmind.domain.errors import BudgetExceededError, DeadlineExceeded
 from assetmind.providers.cache import MarketCache
 from assetmind.providers.cvm import CvmProvider
 from assetmind.providers.errors import ProviderError
+
+T = TypeVar("T")
 
 
 class ProviderRegistry:
@@ -29,6 +33,7 @@ class ProviderRegistry:
         self.cvm = cvm
         self.budget = budget
         self.cache = cache or MarketCache()
+        self.deadline: datetime | None = None
         self.semaphores = {
             "brapi": asyncio.Semaphore(1),
             "coingecko": asyncio.Semaphore(2),
@@ -51,10 +56,10 @@ class ProviderRegistry:
         self._reserve(3 if asset.asset_class is AssetClass.EQUITY else 2)
         if asset.asset_class is AssetClass.CRYPTO:
             async with self.semaphores["coingecko"]:
-                snapshot = await self.coingecko.fetch(asset, as_of=as_of, now=now)  # type: ignore[attr-defined]
+                snapshot = await self._bounded(self.coingecko.fetch(asset, as_of=as_of, now=now))  # type: ignore[attr-defined]
         else:
             async with self.semaphores["brapi"]:
-                snapshot = await self.brapi.fetch(asset, as_of=as_of, now=now)  # type: ignore[attr-defined]
+                snapshot = await self._bounded(self.brapi.fetch(asset, as_of=as_of, now=now))  # type: ignore[attr-defined]
 
         if asset.asset_class is AssetClass.REAL_ESTATE:
             facts = await self.cvm.fund_facts(asset, now=now)
@@ -68,7 +73,7 @@ class ProviderRegistry:
                 self._reserve(1)
                 try:
                     async with self.semaphores["bcb"]:
-                        selic = await self.bcb.latest_selic(now=now)  # type: ignore[attr-defined]
+                        selic = await self._bounded(self.bcb.latest_selic(now=now))  # type: ignore[attr-defined]
                     snapshot = snapshot.model_copy(update={"macro": [selic]})
                     self._selic_loaded = True
                 except (ProviderError, BudgetExceededError):
@@ -76,6 +81,22 @@ class ProviderRegistry:
 
         self.cache.put(cache_key, snapshot, retrieved_at=now)
         return snapshot
+
+    async def _bounded(self, call: Coroutine[Any, Any, T]) -> T:
+        """Cancel a provider call that is still running when the deadline passes."""
+
+        if self.deadline is None:
+            return await call
+        remaining = (self.deadline - datetime.now(UTC)).total_seconds()
+        if remaining <= 0:
+            closer = getattr(call, "close", None)
+            if closer is not None:
+                closer()
+            raise DeadlineExceeded("Deadline exceeded.")
+        try:
+            return await asyncio.wait_for(call, timeout=remaining)
+        except TimeoutError as exc:
+            raise DeadlineExceeded("Deadline exceeded.") from exc
 
     def _reserve(self, calls: int) -> None:
         for _ in range(calls):

@@ -13,18 +13,25 @@ from uuid import uuid4
 
 import httpx
 from agno.agent import Agent
+from agno.exceptions import InputCheckError
 from agno.tools import tool
 
 from assetmind.agents.report_model import ReportModel
-from assetmind.application.budget import format_token_balance
+from assetmind.application.budget import (
+    assert_narration_allowed,
+    format_token_balance,
+    narration_snapshot,
+    provider_probe_snapshot,
+)
 from assetmind.application.service import AnalysisService
 from assetmind.application.session_vectors import SessionVectorStore
 from assetmind.config.settings import Settings
 from assetmind.domain.assets.catalog import CATALOG
 from assetmind.domain.assets.identity import AssetClass, AssetRequest, Market
-from assetmind.domain.errors import DomainError
+from assetmind.domain.errors import BudgetExceededError, DomainError
 from assetmind.domain.periods import continues_session, intake_question, periods_for
 from assetmind.models.gateway import build_groq
+from assetmind.persistence.repository import AnalysisRepository
 from assetmind.providers.errors import ProviderError
 from assetmind.providers.news import fetch_headlines
 
@@ -130,10 +137,12 @@ def _groq_analyst(
         ],
         tools=[
             run_financial_analysis,
-            _news_tool(),
+            _news_tool(service),
             _periods_tool(),
             _shock_tool(service, settings, memory),
         ],
+        pre_hooks=[_guard_narration(service, settings)],
+        post_hooks=[_record_narration(service, settings)],
         add_knowledge_to_context=True,
         knowledge_retriever=knowledge_retriever,
         telemetry=False,
@@ -241,12 +250,12 @@ async def answer_message(
     return rendered
 
 
-def _news_tool() -> Any:
+def _news_tool(service: AnalysisService) -> Any:
     @tool
     async def get_asset_news(symbol: str) -> str:
         """Return up to three headlines and the consultation source for one asset."""
 
-        return await _headline_text(symbol)
+        return await _headline_text(symbol, repository=service.repository)
 
     return get_asset_news
 
@@ -283,19 +292,64 @@ def _shock_tool(service: AnalysisService, settings: Settings, memory: SessionVec
     return illustrative_price_shocks
 
 
-async def _headline_text(symbol: str) -> str:
+def _guard_narration(service: AnalysisService, settings: Settings) -> Any:
+    def guard_narration(run_input: Any) -> None:
+        text = _input_text(run_input)
+        balance = service.repository.token_balance(settings.token_allowance)
+        try:
+            assert_narration_allowed(settings.budget_limits(), balance, text, settings.max_output_tokens)
+        except BudgetExceededError as exc:
+            raise InputCheckError(exc.message) from exc
+
+    return guard_narration
+
+
+def _record_narration(service: AnalysisService, settings: Settings) -> Any:
+    def record_narration(run_output: Any) -> None:
+        metrics = getattr(run_output, "metrics", None)
+        snapshot = narration_snapshot(
+            settings.budget_limits(),
+            _input_text(getattr(run_output, "input", None)),
+            settings.max_output_tokens,
+            actual_input_tokens=int(getattr(metrics, "input_tokens", 0) or 0),
+            actual_output_tokens=int(getattr(metrics, "output_tokens", 0) or 0),
+        )
+        service.repository.record_usage(kind="chat", usage=snapshot)
+
+    return record_narration
+
+
+def _input_text(value: Any) -> str:
+    if value is None:
+        return ""
+    content = getattr(value, "input_content", value)
+    if isinstance(content, str):
+        return content
+    return str(content)
+
+
+async def _headline_text(symbol: str, repository: AnalysisRepository | None = None) -> str:
     try:
         async with httpx.AsyncClient() as client:
             payload = await fetch_headlines(client, symbol)
     except ProviderError as exc:
+        _record_news(repository)
         return f"Fonte de consulta: Google News. A fonte nao respondeu: {exc.message}"
+    _record_news(repository)
     return _format_headlines(payload)
+
+
+def _record_news(repository: AnalysisRepository | None) -> None:
+    if repository is None:
+        return
+    repository.record_usage(kind="news", usage=provider_probe_snapshot())
 
 
 def _format_headlines(payload: dict[str, object]) -> str:
     lines = [
         f"Fonte de consulta: {payload['source']}.",
         f"Janela: {payload['window']}.",
+        f"Coletado em: {payload.get('retrieved_at')}.",
         f"Busca: {payload['source_url']}.",
     ]
     items = payload["items"]
@@ -305,7 +359,8 @@ def _format_headlines(payload: dict[str, object]) -> str:
         for item in items:
             if isinstance(item, dict):
                 lines.append(
-                    f"{item.get('title')} | {item.get('publisher')} | {item.get('published_at')} | {item.get('url')}"
+                    f"{item.get('title')} | {item.get('publisher')} | {item.get('published_at')} | "
+                    f"{item.get('relevance')} | {item.get('url')}"
                 )
     lines.append("O texto da materia nao e copiado.")
     return "\n".join(lines)

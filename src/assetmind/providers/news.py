@@ -1,18 +1,20 @@
 """Headline lookup. Titles and links only. Article bodies are not stored."""
 
+import asyncio
 import email.utils
 import xml.etree.ElementTree as ET
-from datetime import datetime
-from urllib.parse import quote
+from datetime import UTC, datetime
+from urllib.parse import quote, urlparse
 
 import httpx
 
-from assetmind.providers.errors import ProviderError
+from assetmind.providers.errors import ProviderError, ProviderTimeout
 from assetmind.providers.http import assert_allowed_url
 
 SOURCE_NAME = "Google News"
 ALLOWED_HOSTS = {"news.google.com"}
 _MAX_ITEMS = 3
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 
 
 def news_search_url(symbol: str) -> str:
@@ -20,17 +22,32 @@ def news_search_url(symbol: str) -> str:
     return f"https://news.google.com/rss/search?q={query}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
 
 
-def parse_headlines(xml_text: str, *, limit: int = _MAX_ITEMS) -> list[dict[str, str | None]]:
+def parse_headlines(
+    xml_text: str,
+    *,
+    symbol: str = "",
+    retrieved_at: datetime | None = None,
+    limit: int = _MAX_ITEMS,
+) -> list[dict[str, str | None]]:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
         raise ProviderError("News feed was not valid XML.", provider="google-news") from exc
+    collected = retrieved_at or datetime.now(UTC)
+    stamp = collected.isoformat()
     items: list[dict[str, str | None]] = []
+    seen_titles: set[str] = set()
+    seen_urls: set[str] = set()
     for node in root.iter("item"):
         title = _text(node, "title")
         link = _text(node, "link")
-        if not title or not link:
+        if not title or not link or not valid_headline_url(link):
             continue
+        title_key = title.casefold()
+        if title_key in seen_titles or link in seen_urls:
+            continue
+        seen_titles.add(title_key)
+        seen_urls.add(link)
         published = _published(node.findtext("pubDate"))
         source = node.find("source")
         publisher = source.text.strip() if source is not None and source.text else SOURCE_NAME
@@ -40,18 +57,32 @@ def parse_headlines(xml_text: str, *, limit: int = _MAX_ITEMS) -> list[dict[str,
                 "url": link,
                 "published_at": published,
                 "publisher": publisher,
+                "retrieved_at": stamp,
+                "relevance": _relevance(symbol, title, link),
             }
         )
-        if len(items) >= limit:
-            break
-    return items
+    items.sort(key=lambda item: item["relevance"] != "symbol")
+    return items[:limit]
+
+
+def valid_headline_url(url: str) -> bool:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return False
+    if host in _BLOCKED_HOSTS or host.endswith(".local"):
+        return False
+    return True
 
 
 async def fetch_headlines(client: httpx.AsyncClient, symbol: str, *, limit: int = _MAX_ITEMS) -> dict[str, object]:
     url = news_search_url(symbol)
     assert_allowed_url(url, ALLOWED_HOSTS)
+    retrieved_at = datetime.now(UTC)
     try:
-        response = await client.get(url, timeout=8, follow_redirects=True)
+        response = await asyncio.wait_for(client.get(url, timeout=8, follow_redirects=True), timeout=8)
+    except TimeoutError as exc:
+        raise ProviderTimeout("News source timed out.", provider="google-news") from exc
     except httpx.HTTPError as exc:
         raise ProviderError("News source did not respond.", provider="google-news") from exc
     if response.status_code >= 400:
@@ -61,8 +92,16 @@ async def fetch_headlines(client: httpx.AsyncClient, symbol: str, *, limit: int 
         "source": SOURCE_NAME,
         "source_url": url,
         "window": "7d",
-        "items": parse_headlines(response.text, limit=limit),
+        "retrieved_at": retrieved_at.isoformat(),
+        "items": parse_headlines(response.text, symbol=symbol, retrieved_at=retrieved_at, limit=limit),
     }
+
+
+def _relevance(symbol: str, title: str, url: str) -> str:
+    token = symbol.casefold()
+    if token and (token in title.casefold() or token in url.casefold()):
+        return "symbol"
+    return "search"
 
 
 def _text(node: ET.Element, tag: str) -> str | None:

@@ -18,7 +18,7 @@ The usage rows already stored for this database and `ASSETMIND_TOKEN_ALLOWANCE`.
 None. Do not estimate tokens by calling a model.
 
 ## Domain rules
-Estimated usage and actual provider usage stay in separate fields. Remaining tokens subtract the estimated total from the allowance. A missing actual count stays zero until the provider reports it.
+Estimated usage and actual provider usage stay in separate fields. Remaining tokens subtract the estimated total from the allowance. A missing actual count stays zero until the provider reports it. A Groq narration is its own ledger row. The call is refused when the reservation exceeds the per-call cap or the remaining allowance. A news lookup counts as one provider call and does not spend model tokens.
 
 ## Calculation requirements
 Estimate text at four characters per token. Cost uses the configured USD rates and is not an invoice.

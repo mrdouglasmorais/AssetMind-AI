@@ -1,7 +1,10 @@
 """Deterministic hashed embeddings for session retrieval.
 
 The vectors are a local index. They do not call a model and they do not rank
-financial relevance. Cosine similarity only finds earlier turns with similar words.
+financial relevance. Each token is hashed into one of 64 buckets, so the score
+follows shared words. A paraphrase with no shared token scores zero. Two
+different tokens can land in the same bucket. Cosine similarity only finds
+earlier turns with similar words.
 """
 
 import hashlib
@@ -24,6 +27,15 @@ def embed(text: str) -> list[float]:
 
 def cosine(left: list[float], right: list[float]) -> float:
     return sum(one * other for one, other in zip(left, right, strict=True))
+
+
+def rank_documents(query: str, documents: list[str]) -> list[tuple[float, str]]:
+    """Highest cosine first. Ties keep the original document order."""
+
+    query_vector = embed(query)
+    scored = [(cosine(query_vector, embed(document)), index, document) for index, document in enumerate(documents)]
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [(score, document) for score, _index, document in scored]
 
 
 def estimate_tokens(text: str) -> int:

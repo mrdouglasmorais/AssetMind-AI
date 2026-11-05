@@ -124,7 +124,7 @@ async def _fetch_class(step_input: StepInput, asset_class: AssetClass) -> StepOu
                 now=context.now,
                 as_of=context.as_of,
             )
-        except BudgetExceededError as exc:
+        except (BudgetExceededError, DeadlineExceeded) as exc:
             context.partial_reasons.append(exc.message)
             break
         except ProviderError as exc:

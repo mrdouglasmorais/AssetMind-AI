@@ -24,11 +24,16 @@ _FEED = """<?xml version="1.0"?>
 
 
 def test_headlines_keep_three_titles_and_drop_the_rest() -> None:
-    items = parse_headlines(_FEED)
+    from datetime import UTC, datetime
+
+    collected = datetime(2026, 11, 5, tzinfo=UTC)
+    items = parse_headlines(_FEED, symbol="PETR4", retrieved_at=collected)
     assert len(items) == 3
     assert items[0]["title"] == "Titulo um"
     assert items[0]["publisher"] == "Fonte A"
     assert items[0]["published_at"] == "2026-11-04T18:00:00+00:00"
+    assert items[0]["retrieved_at"] == "2026-11-05T00:00:00+00:00"
+    assert items[0]["relevance"] == "search"
 
 
 def test_periods_keep_the_return_window_separate_from_52_weeks() -> None:
@@ -59,6 +64,23 @@ def test_missing_class_horizon_and_news_each_ask_one_question() -> None:
     assert "3 meses" in long_window
     assert continues_session("12 meses") is True
     assert continues_session("os dois") is True
+
+
+def test_invalid_duplicate_and_off_symbol_headlines_are_filtered() -> None:
+    from datetime import UTC, datetime
+
+    feed = """<?xml version="1.0"?>
+<rss><channel>
+<item><title>Outro assunto</title><link>http://news.google.com/insecure</link></item>
+<item><title>PETR4 no pregao</title><link>https://news.google.com/rss/articles/petr4</link></item>
+<item><title>PETR4 no pregao</title><link>https://news.google.com/rss/articles/copy</link></item>
+<item><title>Sem o codigo</title><link>https://news.google.com/rss/articles/other</link></item>
+<item><title>Local</title><link>https://user:secret@localhost/a</link></item>
+</channel></rss>"""
+    items = parse_headlines(feed, symbol="PETR4", retrieved_at=datetime(2026, 11, 5, tzinfo=UTC))
+    assert [item["title"] for item in items] == ["PETR4 no pregao", "Sem o codigo"]
+    assert items[0]["relevance"] == "symbol"
+    assert items[1]["relevance"] == "search"
 
 
 def test_invalid_or_incomplete_feed_items_are_dropped() -> None:
@@ -189,5 +211,6 @@ async def test_news_route_returns_the_source_and_three_headlines(tmp_path: objec
     body = response.json()
     assert body["source"] == "Google News"
     assert body["window"] == "7d"
+    assert body["retrieved_at"]
     assert len(body["items"]) == 3
     assert body["items"][0]["title"] == "Titulo um"

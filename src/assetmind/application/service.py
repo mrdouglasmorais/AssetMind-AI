@@ -1,5 +1,6 @@
 """Use case that runs the Agno workflow and stores the result."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -65,8 +66,15 @@ class AnalysisService:
         )
         register_run(context)
         error_code = None
+        if context.deadline is None:
+            raise DomainError("Analysis deadline is not set.")
+        registry.deadline = context.deadline
         try:
-            await self.workflow.arun(input=analysis_id)
+            remaining = max((context.deadline - datetime.now(UTC)).total_seconds(), 0)
+            await asyncio.wait_for(self.workflow.arun(input=analysis_id), timeout=remaining)
+        except TimeoutError:
+            error_code = "deadline"
+            context.partial_reasons.append("Deadline exceeded.")
         except (DomainError, BudgetExceededError) as exc:
             error_code = exc.code
             context.errors.append(exc.message)

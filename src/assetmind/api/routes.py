@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from assetmind.api.schemas import AnalysisAccepted, AnalysisCreate, ErrorBody
+from assetmind.application.budget import provider_probe_snapshot
 from assetmind.application.service import AnalysisService
 from assetmind.domain.assets.catalog import search_catalog
 from assetmind.domain.assets.identity import AssetRequest
@@ -55,10 +56,14 @@ async def asset_news(
 ) -> dict[str, object]:
     _authorize(request, x_api_key)
     _limit(request, x_api_key or "anonymous")
+    repository: AnalysisRepository = request.app.state.repository
     try:
-        return await fetch_headlines(request.app.state.http_client, symbol.strip().upper())
+        payload = await fetch_headlines(request.app.state.http_client, symbol.strip().upper())
     except ProviderError as exc:
+        repository.record_usage(kind="news", usage=provider_probe_snapshot())
         raise HTTPException(status_code=503, detail=exc.message) from exc
+    repository.record_usage(kind="news", usage=provider_probe_snapshot())
+    return payload
 
 
 @router.post("/api/v1/analyses", response_model=AnalysisAccepted)
