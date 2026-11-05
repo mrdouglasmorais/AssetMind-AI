@@ -14,6 +14,7 @@ import React, { type FC } from 'react'
 
 import Icon from '@/components/ui/icon'
 import ChatBlankState from './ChatBlankState'
+import { useStore } from '@/store'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -59,7 +60,11 @@ const References: FC<ReferenceProps> = ({ references }) => (
   </div>
 )
 
-const AgentMessageWrapper = ({ message }: MessageWrapperProps) => {
+const AgentMessageWrapper = ({
+  message,
+  isLastMessage
+}: MessageWrapperProps) => {
+  const isStreaming = useStore((state) => state.isStreaming)
   return (
     <div className="flex flex-col gap-y-9">
       {message.extra_data?.reasoning_steps &&
@@ -121,7 +126,10 @@ const AgentMessageWrapper = ({ message }: MessageWrapperProps) => {
           </div>
         </div>
       )}
-      <AgentMessage message={message} />
+      <AgentMessage
+        message={message}
+        interactive={isLastMessage && !isStreaming}
+      />
     </div>
   )
 }

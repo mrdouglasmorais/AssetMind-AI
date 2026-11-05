@@ -1,11 +1,17 @@
 import httpx
 import pytest
 
-from assetmind.agents.chat import _headline_text, _periods_tool, _shock_tool, answer_message
+from assetmind.agents.chat import (
+    _headline_text,
+    _periods_tool,
+    _shock_tool,
+    answer_message,
+    assets_from_message,
+)
 from assetmind.api.app import create_app
 from assetmind.config.settings import Settings
 from assetmind.domain.assets.identity import AssetClass, AssetRequest
-from assetmind.domain.periods import continues_session, intake_question, periods_for
+from assetmind.domain.periods import continues_session, intake_question, periods_for, render_choice
 from assetmind.providers.errors import ProviderError
 from assetmind.providers.news import fetch_headlines, parse_headlines
 
@@ -42,28 +48,49 @@ def test_periods_keep_the_return_window_separate_from_52_weeks() -> None:
     assert any("52 semanas" in line and "separado" in line for line in lines)
 
 
+def test_a_ticker_ending_in_11_keeps_the_class_from_the_reply() -> None:
+    fund = assets_from_message("ABCD11 e um fundo imobiliario")
+    share = assets_from_message("WXYZ11 e uma acao")
+    assert fund[0].asset_class is AssetClass.REAL_ESTATE
+    assert share[0].asset_class is AssetClass.EQUITY
+    assert intake_question("ABCD11 e um fundo imobiliario", fund) is None
+
+
 def test_a_broad_request_asks_which_blocks_belong() -> None:
     question = intake_question("analise completa PETR4", [])
     assert question is not None
-    assert "manchetes" in question
+    assert question.mode == "multiple"
+    assert "manchetes" in question.prompt
+    rendered = render_choice(question)
+    assert "```assetmind-choices" in rendered
+    assert '"prompt": "Para agregar esta execucao' in rendered
+    assert '"label": "Até 3 manchetes"' in rendered
 
 
 def test_a_projection_asks_for_a_horizon_before_it_runs() -> None:
     question = intake_question("projecao de valorizacao PETR4", [])
     assert question is not None
-    assert "Nao e uma projecao" in question
+    assert question.mode == "single"
+    assert "Nao e uma projecao" in question.prompt
+    assert [option.value for option in question.options] == ["curto prazo", "medio prazo", "longo prazo"]
 
 
 def test_missing_class_horizon_and_news_each_ask_one_question() -> None:
     ambiguous = intake_question("analise ABCD11", [AssetRequest(symbol="ABCD11")])
     assert ambiguous is not None
-    assert "fundo imobiliario" in ambiguous
-    assert intake_question("noticias", []) == "De qual ativo devo buscar as manchetes?"
+    assert "fundo imobiliario" in ambiguous.prompt
+    assert [option.label for option in ambiguous.options] == ["Ação", "Fundo imobiliário"]
+    news = intake_question("noticias", [])
+    assert news is not None
+    assert news.prompt == "De qual ativo devo buscar as manchetes?"
+    assert any(option.value == "noticias PETR4" for option in news.options)
     long_window = intake_question("retorno em 5 anos da PETR4", [])
     assert long_window is not None
-    assert "3 meses" in long_window
+    assert "3 meses" in long_window.prompt
+    assert intake_question("retorno de 3 meses", []) is None
     assert continues_session("12 meses") is True
     assert continues_session("os dois") is True
+    assert continues_session("cotacao e retorno") is True
 
 
 def test_invalid_duplicate_and_off_symbol_headlines_are_filtered() -> None:

@@ -217,7 +217,7 @@ A suíte padrão usa fixtures e `MockTransport`. Ela não chama modelo pago nem 
 
 Verificado neste workspace em 5 de novembro de 2026:
 
-- Ruff, Pyright e pytest passaram. A cobertura ficou em 86,95%, com 66 testes.
+- Ruff, Pyright e pytest passaram. A cobertura ficou em 87,08%, com 67 testes.
 - A imagem `assetmind-ai:local` respondeu `/health`, `/ready` e uma análise fixture de ação, cripto e FII, com zero chamadas de modelo.
 - brapi (`PETR4`), a série 432 do Banco Central e o CoinGecko (`bitcoin`) responderam HTTP 200. Essas chamadas ficam fora da suíte.
 

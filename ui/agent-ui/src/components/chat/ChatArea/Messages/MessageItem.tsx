@@ -7,12 +7,14 @@ import Images from './Multimedia/Images'
 import Audios from './Multimedia/Audios'
 import { memo } from 'react'
 import AgentThinkingLoader from './AgentThinkingLoader'
+import ReplyChoices, { splitChoices } from './ReplyChoices'
 
 interface MessageProps {
   message: ChatMessage
+  interactive?: boolean
 }
 
-const AgentMessage = ({ message }: MessageProps) => {
+const AgentMessage = ({ message, interactive = false }: MessageProps) => {
   const { streamingErrorMessage } = useStore()
   let messageContent
   if (message.streamingError) {
@@ -27,9 +29,13 @@ const AgentMessage = ({ message }: MessageProps) => {
       </p>
     )
   } else if (message.content) {
+    const { prose, choices } = splitChoices(message.content)
     messageContent = (
       <div className="flex w-full flex-col gap-4">
-        <MarkdownRenderer>{message.content}</MarkdownRenderer>
+        <MarkdownRenderer>{prose}</MarkdownRenderer>
+        {choices ? (
+          <ReplyChoices choices={choices} interactive={interactive} />
+        ) : null}
         {message.videos && message.videos.length > 0 && (
           <Videos videos={message.videos} />
         )}

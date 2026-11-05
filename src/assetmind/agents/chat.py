@@ -29,7 +29,7 @@ from assetmind.config.settings import Settings
 from assetmind.domain.assets.catalog import CATALOG
 from assetmind.domain.assets.identity import AssetClass, AssetRequest, Market
 from assetmind.domain.errors import BudgetExceededError, DomainError
-from assetmind.domain.periods import continues_session, intake_question, periods_for
+from assetmind.domain.periods import continues_session, intake_question, periods_for, render_choice
 from assetmind.models.gateway import build_groq
 from assetmind.persistence.repository import AnalysisRepository
 from assetmind.providers.errors import ProviderError
@@ -43,6 +43,8 @@ _LONG_WINDOW = re.compile(r"\b(5|cinco)\s+anos\b", re.IGNORECASE)
 _NEWS = re.compile(r"notici", re.IGNORECASE)
 _PROJECTION = re.compile(r"proje|valoriza|cenario", re.IGNORECASE)
 _ANALYSIS = re.compile(r"retorno|cotacao|multiplo|analise|cenario|proje|valoriza", re.IGNORECASE)
+_EQUITY_CLASS = re.compile(r"\b(acao|ação)\b", re.IGNORECASE)
+_FII_CLASS = re.compile(r"fundo imobili", re.IGNORECASE)
 _CLASSES = {
     "acao": AssetClass.EQUITY,
     "equity": AssetClass.EQUITY,
@@ -121,6 +123,7 @@ def _groq_analyst(
         ),
         instructions=[
             "Write Brazilian Portuguese.",
+            "If the tool result contains an assetmind-choices block, copy that fenced block unchanged.",
             "If the analysis blocks, the horizon, or the class of a ticker ending in 11 are missing, ask and stop.",
             "Call run_financial_analysis before stating any figure.",
             "Call get_asset_news for headlines and name Google News as the source.",
@@ -166,7 +169,15 @@ def assets_from_message(text: str) -> list[AssetRequest]:
         symbol = match.group(0).upper()
         if symbol in seen:
             continue
-        chosen.append(AssetRequest(symbol=symbol, asset_class=None, market=None))
+        asset_class = None
+        market = None
+        if symbol.endswith("11") and _FII_CLASS.search(text):
+            asset_class = AssetClass.REAL_ESTATE
+            market = Market.B3
+        elif symbol.endswith("11") and _EQUITY_CLASS.search(text):
+            asset_class = AssetClass.EQUITY
+            market = Market.B3
+        chosen.append(AssetRequest(symbol=symbol, asset_class=asset_class, market=market))
         seen.add(symbol)
     for alias, symbol in _ALIASES.items():
         if symbol in seen or not re.search(rf"\b{re.escape(alias)}\b", haystack):
@@ -208,7 +219,7 @@ async def answer_message(
     question = intake_question(text, assets)
     if question:
         _remember(memory, session_id, text, [asset.symbol for asset in assets])
-        return question
+        return render_choice(question)
     if not assets:
         names = ", ".join(entry.symbol for entry in CATALOG)
         _remember(memory, session_id, text, [])

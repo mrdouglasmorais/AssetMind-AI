@@ -1,7 +1,10 @@
 """Evaluation windows. These are provider limits, not forecasts."""
 
+import json
 import re
+from dataclasses import dataclass
 
+from assetmind.domain.assets.catalog import CATALOG
 from assetmind.domain.assets.identity import AssetClass, AssetRequest
 
 _COMPLETE = re.compile(r"completa|diversas|tudo sobre", re.IGNORECASE)
@@ -38,35 +41,95 @@ def periods_for(asset_class: AssetClass) -> list[str]:
     return list(PERIODS[asset_class])
 
 
+_ANSWERED_WINDOW = re.compile(r"os dois|3 meses|faixa", re.IGNORECASE)
+_CHOICE_FOLLOW = re.compile(r"cotacao|multiplo|noticia|cenario|faixa|3 meses|os dois", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class ChoiceOption:
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
+class ChoicePrompt:
+    mode: str
+    prompt: str
+    options: tuple[ChoiceOption, ...]
+
+
 def continues_session(text: str) -> bool:
-    return bool(_HORIZON.search(text) or re.search(r"os dois|3 meses|faixa", text, re.IGNORECASE))
+    return bool(_HORIZON.search(text) or _ANSWERED_WINDOW.search(text) or _CHOICE_FOLLOW.search(text))
 
 
-def intake_question(text: str, assets: list[AssetRequest]) -> str | None:
+def render_choice(prompt: ChoicePrompt) -> str:
+    payload = {
+        "mode": prompt.mode,
+        "prompt": prompt.prompt,
+        "options": [{"label": option.label, "value": option.value} for option in prompt.options],
+    }
+    return f"{prompt.prompt}\n\n```assetmind-choices\n{json.dumps(payload, ensure_ascii=False)}\n```"
+
+
+def intake_question(text: str, assets: list[AssetRequest]) -> ChoicePrompt | None:
     """Question that must be answered before this turn runs."""
 
     for asset in assets:
         if asset.symbol.endswith("11") and asset.asset_class is None:
-            return f"{asset.symbol} termina em 11. Devo tratar como acao ou como fundo imobiliario?"
+            return ChoicePrompt(
+                mode="single",
+                prompt=f"{asset.symbol} termina em 11. Devo tratar como acao ou como fundo imobiliario?",
+                options=(
+                    ChoiceOption("Ação", f"{asset.symbol} e uma acao"),
+                    ChoiceOption("Fundo imobiliário", f"{asset.symbol} e um fundo imobiliario"),
+                ),
+            )
     if _COMPLETE.search(text) and not _CHOSEN.search(text):
-        return (
-            "Para agregar esta execucao, escolha o que entra agora: "
-            "cotacao e retorno de cerca de 3 meses; multiplos atuais; "
-            "faixa de 52 semanas; ate 3 manchetes; cenario ilustrativo de preco. "
-            "Pode marcar mais de um."
+        return ChoicePrompt(
+            mode="multiple",
+            prompt=(
+                "Para agregar esta execucao, escolha o que entra agora. "
+                "Pode marcar mais de um: cotacao, multiplos, faixa de 52 semanas, manchetes ou cenario."
+            ),
+            options=(
+                ChoiceOption("Cotação e retorno de 3 meses", "cotacao e retorno"),
+                ChoiceOption("Múltiplos atuais", "multiplos atuais"),
+                ChoiceOption("Faixa de 52 semanas", "faixa de 52 semanas"),
+                ChoiceOption("Até 3 manchetes", "noticias"),
+                ChoiceOption("Cenário ilustrativo", "cenario ilustrativo"),
+            ),
         )
     if _PROJECTION.search(text) and not _HORIZON.search(text):
-        return (
-            "O cenario ilustrativo aplica um choque de -15%, 0% ou +15% no preco de referencia. "
-            "Nao e uma projecao de valorizacao. Qual horizonte devo registrar no rotulo: "
-            "curto, medio, longo, ou um numero de meses?"
+        return ChoicePrompt(
+            mode="single",
+            prompt=(
+                "O cenario ilustrativo aplica um choque de -15%, 0% ou +15% no preco de referencia. "
+                "Nao e uma projecao de valorizacao. Qual horizonte devo registrar no rotulo?"
+            ),
+            options=(
+                ChoiceOption("Curto prazo", "curto prazo"),
+                ChoiceOption("Médio prazo", "medio prazo"),
+                ChoiceOption("Longo prazo", "longo prazo"),
+            ),
         )
-    if _LONG_RETURN.search(text) and _RETURN_WORD.search(text):
-        return (
-            "O retorno calculado usa cerca de 3 meses de pregoes. "
-            "A faixa de 52 semanas e um campo da cotacao e nao e o retorno desse intervalo. "
-            "Sigo com o retorno de 3 meses, com a faixa de 52 semanas, ou com os dois?"
+    if _LONG_RETURN.search(text) and _RETURN_WORD.search(text) and not _ANSWERED_WINDOW.search(text):
+        return ChoicePrompt(
+            mode="single",
+            prompt=(
+                "O retorno calculado usa cerca de 3 meses de pregoes. "
+                "A faixa de 52 semanas e um campo da cotacao e nao e o retorno desse intervalo. "
+                "Sigo com o retorno de 3 meses, com a faixa de 52 semanas, ou com os dois?"
+            ),
+            options=(
+                ChoiceOption("Retorno de 3 meses", "retorno de 3 meses"),
+                ChoiceOption("Faixa de 52 semanas", "faixa de 52 semanas"),
+                ChoiceOption("Os dois", "os dois"),
+            ),
         )
     if _NEWS.search(text) and not assets:
-        return "De qual ativo devo buscar as manchetes?"
+        return ChoicePrompt(
+            mode="single",
+            prompt="De qual ativo devo buscar as manchetes?",
+            options=tuple(ChoiceOption(entry.symbol, f"noticias {entry.symbol}") for entry in CATALOG),
+        )
     return None
