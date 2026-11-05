@@ -5,7 +5,7 @@ PORT ?= 8000
 IMAGE ?= assetmind-ai:local
 COMPOSE ?= docker compose
 
-.PHONY: help init install watch run build up down logs test lint format typecheck migrate secrets check clean
+.PHONY: help init install ui-install watch run build up down logs test lint format typecheck migrate secrets check clean
 
 help:
 	@printf '%s\n' \
@@ -13,7 +13,8 @@ help:
 		'' \
 		'  make init        Create .env when missing and install dependencies' \
 		'  make install     Sync the uv environment, including dev tools' \
-		'  make watch       API with reload at http://127.0.0.1:$(PORT)' \
+		'  make ui-install  Install the Agent UI dependencies' \
+		'  make watch       API with reload and the Agent UI on port 3000' \
 		'  make run         API without reload' \
 		'  make build       Build the Docker image $(IMAGE)' \
 		'  make up          Build and start the API with local Postgres' \
@@ -32,16 +33,29 @@ init:
 	@if [ ! -f .env ]; then cp .env.example .env; echo 'Created .env from .env.example'; else echo '.env already exists'; fi
 	@perl -i -pe 's/^ASSETMIND_API_KEY=$$/ASSETMIND_API_KEY=local-dev-key/' .env
 	uv sync --all-groups
+	$(MAKE) ui-install
 	@echo 'Local API key is local-dev-key when that line was empty. Replace it before any shared environment.'
 	@echo 'Next: make watch'
 
 install:
 	uv sync --all-groups
 
+ui-install:
+	cd ui/agent-ui && corepack pnpm install --frozen-lockfile
+
 watch:
-	uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT) --reload --reload-dir src
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	export ASSETMIND_AGENTOS_ENABLED=true; \
+	export NEXT_PUBLIC_AGENT_OS_URL="http://127.0.0.1:$(PORT)"; \
+	export NEXT_PUBLIC_OS_SECURITY_KEY="$${ASSETMIND_AGENT_UI_TOKEN:-$${ASSETMIND_OS_SECURITY_KEY:-$$ASSETMIND_API_KEY}}"; \
+	test -d ui/agent-ui/node_modules || $(MAKE) ui-install; \
+	uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT) --reload --reload-dir src & \
+	api_pid=$$!; \
+	trap 'kill $$api_pid' EXIT INT TERM; \
+	cd ui/agent-ui && corepack pnpm dev
 
 run:
+	ASSETMIND_AGENTOS_ENABLED=$${ASSETMIND_AGENTOS_ENABLED:-true} \
 	uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT)
 
 build:

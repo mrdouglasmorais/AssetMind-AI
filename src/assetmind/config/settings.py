@@ -21,7 +21,24 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("ASSETMIND_AGENTOS_JWT_SECRET"),
     )
+    os_security_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ASSETMIND_OS_SECURITY_KEY", "OS_SECURITY_KEY"),
+    )
+    agent_ui_url: str = Field(
+        default="http://127.0.0.1:3000",
+        validation_alias=AliasChoices("ASSETMIND_AGENT_UI_URL"),
+    )
     provider_mode: str = Field(default="live", validation_alias=AliasChoices("ASSETMIND_PROVIDER_MODE"))
+    llm_provider: str = Field(default="groq", validation_alias=AliasChoices("ASSETMIND_LLM_PROVIDER"))
+    groq_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GROQ_API_KEY", "ASSETMIND_GROQ_API_KEY"),
+    )
+    groq_model: str = Field(
+        default="openai/gpt-oss-120b",
+        validation_alias=AliasChoices("ASSETMIND_GROQ_MODEL"),
+    )
     openrouter_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENROUTER_API_KEY", "ASSETMIND_OPENROUTER_API_KEY"),
@@ -70,6 +87,13 @@ class Settings(BaseSettings):
     def _provider_mode(cls, value: str) -> str:
         if value not in {"live", "fixtures"}:
             raise ValueError("ASSETMIND_PROVIDER_MODE must be live or fixtures.")
+        return value
+
+    @field_validator("llm_provider")
+    @classmethod
+    def _llm_provider(cls, value: str) -> str:
+        if value not in {"groq", "openrouter"}:
+            raise ValueError("ASSETMIND_LLM_PROVIDER must be groq or openrouter.")
         return value
 
     @property

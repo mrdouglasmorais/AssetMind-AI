@@ -8,7 +8,7 @@ from agno.agent import Agent
 from agno.skills import LocalSkills, Skills
 from pydantic import BaseModel, Field
 
-from assetmind.models.gateway import build_openrouter
+from assetmind.models.gateway import build_groq
 
 
 class NarrativeOutput(BaseModel):
@@ -24,7 +24,7 @@ def build_report_agent(*, model_id: str, api_key: str, max_tokens: int, skills_d
     index = load_skill_index(skills_dir)
     return Agent(
         name="Report Composer",
-        model=build_openrouter(model_id=model_id, api_key=api_key, max_tokens=max_tokens),
+        model=build_groq(model_id=model_id, api_key=api_key, max_tokens=max_tokens),
         instructions=[
             "Write Brazilian Portuguese.",
             "Do not add financial facts, prices, or recommendations.",
@@ -41,7 +41,7 @@ def build_report_agent(*, model_id: str, api_key: str, max_tokens: int, skills_d
 def build_specialist_agents(*, model_id: str, api_key: str, max_tokens: int) -> list[Agent]:
     """Bounded interpreters. The default workflow does not call them."""
 
-    model = build_openrouter(model_id=model_id, api_key=api_key, max_tokens=max_tokens)
+    model = build_groq(model_id=model_id, api_key=api_key, max_tokens=max_tokens)
     names = ("Equity Analyst", "Crypto Analyst", "Real Estate Analyst", "Evidence Validator")
     return [
         Agent(

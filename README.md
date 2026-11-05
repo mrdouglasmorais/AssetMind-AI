@@ -79,7 +79,7 @@ As skills em `.cursor/skills/` orientam o agente que escreve este repositório. 
 | Linguagem | Python 3.13, com suporte declarado a 3.12 |
 | Orquestração | Agno 3.1.12: `Workflow`, `Step` e `Parallel` |
 | API | FastAPI e Pydantic v2 |
-| Modelos | OpenRouter, opcional e desligado no caminho padrão |
+| Modelos | Groq no chat quando `GROQ_API_KEY` está definida; sem a chave o relatório sai direto |
 | Dados | PostgreSQL em produção, SQLite para desenvolvimento e testes |
 | Migrações | SQLAlchemy 2 e Alembic |
 | HTTP | HTTPX assíncrono |
@@ -118,15 +118,18 @@ make init
 make watch
 ```
 
-`make watch` sobe a API em [http://127.0.0.1:8000](http://127.0.0.1:8000) e recarrega quando `src/` muda. A documentação interativa fica em [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). Outra porta: `make watch PORT=9000`. O passo a passo da primeira análise está em [docs/tutorials/first-analysis.md](docs/tutorials/first-analysis.md).
+`make watch` sobe a API em [http://127.0.0.1:8000](http://127.0.0.1:8000) e o [Agent UI](https://docs.agno.com/other/agent-ui) do Agno em [http://127.0.0.1:3000](http://127.0.0.1:3000). A interface recarrega com `src/`. Abrir `/`, `/docs` ou `/redoc` na API redireciona para o Agent UI. O Swagger não é servido. O esquema da API continua em `/openapi.json`. Outra porta da API: `make watch PORT=9000`. O passo a passo está em [docs/tutorials/first-analysis.md](docs/tutorials/first-analysis.md).
+
+No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG11`. A resposta é o relatório determinístico. O token do Agent UI é o mesmo `ASSETMIND_API_KEY`, salvo se `ASSETMIND_OS_SECURITY_KEY` estiver definido. As rotas `/api/v1` continuam pedindo `X-API-Key`.
 
 | Alvo | O que faz |
 | --- | --- |
 | `make help` | Lista os alvos |
-| `make init` | Prepara `.env` e sincroniza o ambiente |
+| `make init` | Prepara `.env`, sincroniza o Python e instala o Agent UI |
 | `make install` | `uv sync --all-groups` |
-| `make watch` | API com reload |
-| `make run` | API sem reload |
+| `make ui-install` | Dependências do Agent UI |
+| `make watch` | API com reload e Agent UI na porta 3000 |
+| `make run` | API sem reload, com AgentOS ligado |
 | `make test` | pytest |
 | `make lint` | Ruff |
 | `make format` | Formata com Ruff |
@@ -189,7 +192,7 @@ Guardrails de uma análise básica, antes de multiplicar pelo número de ativos:
 
 São limites de engenharia, não custo medido em produção. Uso estimado e uso real ficam em campos separados. Estourar o orçamento encerra a rodada e devolve resultado parcial quando alguma métrica já existe.
 
-O caminho versionado faz roteamento, busca e conta em Python. O compositor copia essas métricas para o português e deixa de fora o texto livre do provedor. Isso também impede que uma frase vinda da fonte entre no relatório como instrução. OpenRouter só entra se alguém ligar a narrativa depois, atrás do mesmo orçamento. A suíte de testes não gasta token pago.
+O caminho versionado faz roteamento, busca e conta em Python. O compositor copia essas métricas para o português e deixa de fora o texto livre do provedor. Isso também impede que uma frase vinda da fonte entre no relatório como instrução. Com `GROQ_API_KEY`, o analista do Agent UI pede esse relatório a uma ferramenta e só pode repetir os números dela. Sem a chave, a mesma resposta sai direto. A suíte de testes não gasta token pago.
 
 ## Fontes de dados
 
@@ -240,7 +243,7 @@ Volatilidade anualizada usa 252 períodos na B3 e 365 em cripto. É convenção 
 ## Roteiro
 
 1. Interpretar informes de FII da CVM com carimbo de fonte.
-2. Ligar a narrativa OpenRouter atrás do orçamento que já existe.
+2. Colar `GROQ_API_KEY` e reiniciar o `make watch` para o chat passar pelo Groq.
 3. Publicar o blueprint no Render e registrar o que aconteceu.
 4. Avaliar execução durável do Agno só quando uma análise deixar de caber no request.
 

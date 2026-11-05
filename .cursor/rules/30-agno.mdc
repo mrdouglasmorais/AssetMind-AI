@@ -10,5 +10,5 @@ alwaysApply: false
 - Orchestrate with `Workflow`, `Step`, and `Parallel`.
 - Use an `Agent` only for bounded interpretation of structured metrics.
 - Set `telemetry=False` in tests and local runs.
-- Do not mount AgentOS unless authorization and a JWT secret are configured.
+- Do not mount AgentOS without a JWT secret or an OS security key.
 - Do not attach skill tools that execute scripts on model request.

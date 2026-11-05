@@ -1,6 +1,6 @@
 # ADR 0004 — OpenRouter
 
-Status: provisional
+Status: superseded as the default provider by ADR 0012. The OpenRouter constructor remains.
 
 Context: The series needs one model gateway and a place to enforce token limits.
 

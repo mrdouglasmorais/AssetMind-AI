@@ -1,6 +1,6 @@
 # HTTP API
 
-OpenAPI is served at `/docs` when the app is running.
+The browser entry is the Agno Agent UI. `/`, `/docs`, and `/redoc` redirect to it. Swagger is not mounted. The machine-readable schema remains at `/openapi.json`.
 
 Create an analysis:
 

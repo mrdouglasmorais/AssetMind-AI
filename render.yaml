@@ -28,7 +28,15 @@ services:
         value: live
       - key: ASSETMIND_AGENTOS_ENABLED
         value: "false"
+      - key: ASSETMIND_AGENT_UI_URL
+        value: ""
       - key: ASSETMIND_API_KEY
+        sync: false
+      - key: ASSETMIND_LLM_PROVIDER
+        value: groq
+      - key: ASSETMIND_GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
