@@ -145,7 +145,7 @@ def _mount_agent_os(app: FastAPI, settings: Settings) -> None:
     database = SqliteDb(db_file=_agentos_database(settings), id="assetmind-os")
     common = {
         "name": "AssetMind",
-        "agents": [build_chat_agent(app.state.service, settings)],
+        "agents": [build_chat_agent(app.state.service, settings, http_client=app.state.http_client)],
         "workflows": [build_analysis_workflow()],
         "db": database,
         "base_app": app,

@@ -12,6 +12,7 @@ alwaysApply: true
 - Keep domain logic independent of external frameworks.
 - Validate all financial calculations with tests.
 - Never fabricate market data or financial projections.
+- A named analyst is a reading pattern over emitted metrics, never a source of targets or portfolios. See `rules/analyst-patterns.md`.
 - Enforce token and cost budgets in application code.
 - Preserve evidence provenance and timestamps.
 - Keep API providers replaceable through interfaces.

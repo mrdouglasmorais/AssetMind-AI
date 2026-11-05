@@ -2,6 +2,7 @@
 
 import asyncio
 import email.utils
+import re
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from urllib.parse import quote, urlparse
@@ -15,6 +16,8 @@ SOURCE_NAME = "Google News"
 ALLOWED_HOSTS = {"news.google.com"}
 _MAX_ITEMS = 3
 _BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+_MEDIA = "{http://search.yahoo.com/mrss/}"
+_IMAGE_SRC = re.compile(r"""<img\b[^>]*\bsrc=["'](https://[^"']+)["']""", re.IGNORECASE)
 
 
 def news_search_url(symbol: str) -> str:
@@ -59,6 +62,7 @@ def parse_headlines(
                 "publisher": publisher,
                 "retrieved_at": stamp,
                 "relevance": _relevance(symbol, title, link),
+                "image_url": _image_url(node),
             }
         )
     items.sort(key=lambda item: item["relevance"] != "symbol")
@@ -102,6 +106,24 @@ def _relevance(symbol: str, title: str, url: str) -> str:
     if token and (token in title.casefold() or token in url.casefold()):
         return "symbol"
     return "search"
+
+
+def _image_url(node: ET.Element) -> str | None:
+    """Https image declared on the item. The article page is not requested."""
+
+    for tag in (f"{_MEDIA}content", f"{_MEDIA}thumbnail", "content", "thumbnail"):
+        media = node.find(tag)
+        if media is None:
+            continue
+        medium = (media.attrib.get("medium") or "image").lower()
+        url = media.attrib.get("url")
+        if medium == "image" and url and valid_headline_url(url):
+            return url
+    description = node.findtext("description") or ""
+    match = _IMAGE_SRC.search(description)
+    if match and valid_headline_url(match.group(1)):
+        return match.group(1)
+    return None
 
 
 def _text(node: ET.Element, tag: str) -> str | None:

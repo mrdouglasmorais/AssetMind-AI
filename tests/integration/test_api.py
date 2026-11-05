@@ -57,6 +57,15 @@ async def test_public_health_and_authenticated_analysis(api_client: httpx.AsyncC
         headers={"X-API-Key": "test-key-123"},
     )
     assert search.json()["results"][0]["symbol"] == "PETR4"
+    listed = await api_client.get(
+        "/api/v1/assets/search",
+        params={"q": ""},
+        headers={"X-API-Key": "test-key-123"},
+    )
+    body = listed.json()
+    assert {row["symbol"] for row in body["by_type"]["equity"]} >= {"PETR4", "VALE3"}
+    assert body["by_type"]["real_estate"][0]["symbol"] == "HGLG11"
+    assert {row["symbol"] for row in body["by_type"]["crypto"]} == {"bitcoin", "ethereum"}
 
 
 @pytest.mark.asyncio

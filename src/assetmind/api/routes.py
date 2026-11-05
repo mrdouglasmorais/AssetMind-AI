@@ -11,12 +11,18 @@ from fastapi.responses import StreamingResponse
 from assetmind.api.schemas import AnalysisAccepted, AnalysisCreate, ErrorBody
 from assetmind.application.budget import provider_probe_snapshot
 from assetmind.application.service import AnalysisService
-from assetmind.domain.assets.catalog import search_catalog
+from assetmind.domain.assets.catalog import (
+    LIVE_LISTING_LIMITATION,
+    catalog_payload,
+    search_catalog,
+    search_entries,
+)
 from assetmind.domain.assets.identity import AssetRequest
 from assetmind.domain.errors import DomainError
 from assetmind.domain.scenarios.policy import ScenarioAssumptions
 from assetmind.persistence.repository import AnalysisRepository, StoredAnalysis
 from assetmind.providers.errors import ProviderError
+from assetmind.providers.listings import cached_listings
 from assetmind.providers.news import fetch_headlines
 from assetmind.security.auth import AuthenticationError, require_api_key
 
@@ -39,13 +45,27 @@ def ready(request: Request) -> dict[str, str]:
 
 
 @router.get("/api/v1/assets/search")
-def search_assets(request: Request, q: str, x_api_key: str | None = Header(default=None)) -> dict[str, object]:
+async def search_assets(
+    request: Request,
+    q: str = "",
+    x_api_key: str | None = Header(default=None),
+) -> dict[str, object]:
     _authorize(request, x_api_key)
     _limit(request, x_api_key or "anonymous")
-    return {
-        "results": [entry.model_dump(mode="json") for entry in search_catalog(q)],
-        "limitation": "Search uses the local catalog, not a live market listing.",
-    }
+    settings = request.app.state.settings
+    if settings.provider_mode == "live":
+        try:
+            listed = await cached_listings(
+                request.app.state.http_client,
+                brapi_base_url=settings.brapi_base_url,
+                brapi_api_key=settings.brapi_api_key,
+                coingecko_base_url=settings.coingecko_base_url,
+                coingecko_api_key=settings.coingecko_api_key,
+            )
+        except ProviderError:
+            return catalog_payload(search_catalog(q, limit=50))
+        return catalog_payload(search_entries(listed, q, limit=50), limitation=LIVE_LISTING_LIMITATION)
+    return catalog_payload(search_catalog(q, limit=50))
 
 
 @router.get("/api/v1/assets/{symbol}/news")

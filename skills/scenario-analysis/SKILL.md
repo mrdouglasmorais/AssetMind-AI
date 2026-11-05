@@ -1,39 +1,28 @@
 ---
 name: scenario-analysis
-description: Apply bear, base, and bull price shocks as labeled assumptions.
+description: Turn a fresh reference price into bear, base, and bull prices with an explicit shock label.
 ---
 
 # Scenario analysis
 
 ## Purpose
-Turn a fresh reference price and three shocks into illustrative prices.
+Apply `price * (1 + shock)` to a fresh reference price. The result is a conditional illustration, not a forecast.
 
-## When to apply
-A fresh reference price exists.
+## Inputs
+A fresh reference price and either the default shocks or caller-supplied shocks. No series, no seed, and no model is required for this formula.
 
-## Required inputs
-Reference price and either the MVP default shocks or caller-supplied shocks.
+## Procedure
+1. Stop when the reference price is missing, stale, or conflicting. Prefer omission to a precise invented path.
+2. Default shocks are bear −15%, base 0%, and bull +15%. The label is `illustrative_assumption`. Caller shocks are `user_assumption` and must sit between −95% and +300%.
+3. The disclosure string travels with each scenario. The narrative calls the figure an assumption. It does not call it a projection, a target, or a probability.
+4. Do not assign 20/60/20 or any other probability. A calibrated probability is not emitted.
+5. Monte Carlo, GARCH, DCF, factor betas, and walk-forward backtests are not this skill. They stay out of the report until the engine returns a metric that names that method, its window, and its inputs.
+6. A macro event, including a Selic change, is not converted into a price shock by the model. The only shock is the one in the inputs.
+7. Percentiles from the historical sample stay in the equity or crypto card. They are not reused here as the chance of the bear or bull case.
+8. A Buffett or Barsi lens does not change the shock. Their long holding horizon is not this −15/0/+15 illustration. Say the scenario is a price path under a stated assumption, not the outcome of that horizon.
 
-## Permitted tools
-None. The shock formula is `price * (1 + shock)`.
+## Output
+Three labeled prices, or an explicit omission. No `probability` field. The report disclaimer states the same limit.
 
-## Domain rules
-Defaults of -15%, 0%, and +15% are illustrative assumptions. Caller shocks are user assumptions. Neither is a calibrated forecast.
-
-## Calculation requirements
-Skip scenarios when the reference price is missing or stale.
-
-## Evidence requirements
-The disclosure string must travel with the scenario.
-
-## Expected output
-Three labeled scenario prices, or an explicit omission.
-
-## Failure conditions
-Shock outside the accepted range, or no fresh price.
-
-## Examples
-A price of 10 and a shock of -0.2 produce 8.
-
-## Evaluation cases
-The narrative calls the figure an assumption, not a probability.
+## Tests
+A price of 10 and a shock of −0.2 produce 8. A missing price produces no scenario. The words "projecao" and "probabilidade" do not describe the shock.

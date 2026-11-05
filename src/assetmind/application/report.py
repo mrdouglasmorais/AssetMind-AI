@@ -37,6 +37,9 @@ _PRICE_SERIES_METRICS = {
     "return_p50",
     "return_p95",
     "buy_and_hold_backtest",
+    "return_3m",
+    "return_6m",
+    "return_12m",
     "dividend_yield",
     "volume",
     "market_cap",
@@ -68,6 +71,7 @@ def compose_report(
                 "uncertainties": analysis.uncertainties,
                 "risks": analysis.risks,
                 "sources": _sources(analysis),
+                "coverage": analysis.coverage.model_dump(),
             }
         )
         for issue in analysis.issues:
@@ -115,6 +119,7 @@ def _asset_lines(
     synthetic: bool,
 ) -> str:
     rows = [f"Ativo {analysis.asset.symbol} ({analysis.asset.asset_class.value}), status {analysis.status}."]
+    rows.append(_coverage_line(analysis))
     if synthetic:
         rows.append(
             "Cotacao de mercado indisponivel. A serie local e sintetica de teste e nao e preco, volume ou retorno."
@@ -161,6 +166,16 @@ def _asset_lines(
     sources = _sources(analysis)
     rows.append("Fontes: " + (", ".join(sources) if sources else "nenhuma fonte registrada."))
     return "\n".join(rows)
+
+
+def _coverage_line(analysis: AssetAnalysis) -> str:
+    coverage = analysis.coverage
+    missing = ", ".join(coverage.refused) if coverage.refused else "nenhum"
+    return (
+        f"Cobertura da ficha: {_format_number(coverage.score)} "
+        f"({len(coverage.present)} de {len(coverage.requested)}). "
+        f"Ausentes: {missing}. Nao e nota de compra."
+    )
 
 
 def _sources(analysis: AssetAnalysis) -> list[str]:

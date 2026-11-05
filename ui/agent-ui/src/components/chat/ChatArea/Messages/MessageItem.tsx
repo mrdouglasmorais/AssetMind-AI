@@ -7,6 +7,7 @@ import Images from './Multimedia/Images'
 import Audios from './Multimedia/Audios'
 import { memo } from 'react'
 import AgentThinkingLoader from './AgentThinkingLoader'
+import NewsCarousel, { hideNewsJson, newsFromTools, splitNews } from './NewsCarousel'
 import ReplyChoices, { splitChoices } from './ReplyChoices'
 
 interface MessageProps {
@@ -29,13 +30,18 @@ const AgentMessage = ({ message, interactive = false }: MessageProps) => {
       </p>
     )
   } else if (message.content) {
+    const toolNews = newsFromTools(message.tool_calls)
     const { prose, choices } = splitChoices(message.content)
+    const { prose: afterFence, news } = splitNews(prose)
+    const cards = toolNews ?? news
+    const body = hideNewsJson(afterFence)
     messageContent = (
       <div className="flex w-full flex-col gap-4">
-        <MarkdownRenderer>{prose}</MarkdownRenderer>
+        <MarkdownRenderer>{body}</MarkdownRenderer>
         {choices ? (
           <ReplyChoices choices={choices} interactive={interactive} />
         ) : null}
+        {cards ? <NewsCarousel news={cards} /> : null}
         {message.videos && message.videos.length > 0 && (
           <Videos videos={message.videos} />
         )}

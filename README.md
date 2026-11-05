@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="doc/Assets/Banner.png" alt="AssetMind AI — engenharia de agentes para análise financeira" width="100%">
+  <img src="docs/assets/banner.png" alt="AssetMind AI — engenharia de agentes para análise financeira" width="100%">
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@ Um ticker da B3 terminado em `11` é ambíguo: pode ser unidade de ação ou cot
 ## Visão do produto
 
 <p align="center">
-  <img src="doc/Assets/AssetMindAI.png" alt="Cartaz do AssetMind AI: usuário, orquestrador, três especialistas, dados e relatório">
+  <img src="docs/assets/poster.png" alt="Cartaz do AssetMind AI: usuário, orquestrador, três especialistas, dados e relatório">
 </p>
 
 O cartaz resume a intenção do projeto: um orquestrador, três caminhos de análise, uma camada de dados e um relatório com fontes. A pasta desenhada no cartaz é um mapa visual. O código vive em `src/assetmind/`, com as specs em `specs/` e as decisões em `docs/adr/`.
@@ -101,7 +101,12 @@ src/assetmind/
   providers/      brapi, CoinGecko, Banco Central e fixture da CVM
   persistence/    tabelas da aplicação
   security/       API key e limite de taxa
-docs/adr/         decisões de arquitetura
+docs/
+  adr/            decisões de arquitetura
+  api/            contrato HTTP
+  architecture/   visão do monólito
+  assets/         banner e cartaz
+  tutorials/      primeira análise
 specs/            contratos
 skills/           procedimentos de execução
 .cursor/          regras e skills de desenvolvimento
@@ -151,7 +156,7 @@ No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG1
 | --- | --- | --- |
 | `GET` | `/health` | pública |
 | `GET` | `/ready` | pública |
-| `GET` | `/api/v1/assets/search?q=` | `X-API-Key` |
+| `GET` | `/api/v1/assets/search?q=` | `X-API-Key`. `q` vazio lista o catálogo em `results` e `by_type` |
 | `POST` | `/api/v1/analyses` | `X-API-Key` |
 | `GET` | `/api/v1/analyses/{id}` | `X-API-Key` |
 | `GET` | `/api/v1/analyses/{id}/events` | `X-API-Key`, SSE |
@@ -217,7 +222,7 @@ A suíte padrão usa fixtures e `MockTransport`. Ela não chama modelo pago nem 
 
 Verificado neste workspace em 5 de novembro de 2026:
 
-- Ruff, Pyright e pytest passaram. A cobertura ficou em 87,12%, com 75 testes.
+- Ruff, Pyright e pytest passaram. A cobertura ficou em 86,93%, com 83 testes.
 - A imagem `assetmind-ai:local` respondeu `/health`, `/ready` e uma análise fixture de ação, cripto e FII, com zero chamadas de modelo.
 - brapi (`PETR4`), a série 432 do Banco Central e o CoinGecko (`bitcoin`) responderam HTTP 200. Essas chamadas ficam fora da suíte.
 
@@ -233,7 +238,6 @@ Ainda em aberto:
 
 - Leitura do informe mensal da CVM. No modo `live`, fundamentos do FII ficam ausentes. No modo `fixtures`, os fatos de amostra vêm rotulados.
 - Plano de controle do AgentOS. Ele só sobe com `ASSETMIND_AGENTOS_ENABLED=true` e um segredo JWT.
-- Busca além do catálogo local.
 - Fila durável. A análise corre dentro do request.
 - Previsão com probabilidade calibrada. Os choques padrão são -15%, 0% e +15%, marcados como premissa ilustrativa.
 - Deploy validado no Render, latência medida e custo medido de hospedagem.

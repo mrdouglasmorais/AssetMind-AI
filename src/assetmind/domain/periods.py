@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from assetmind.domain.assets.catalog import CATALOG
+from assetmind.domain.assets.catalog import CATALOG, CatalogEntry, choice_page
 from assetmind.domain.assets.identity import AssetClass, AssetRequest
 
 _COMPLETE = re.compile(r"completa|diversas|tudo sobre", re.IGNORECASE)
@@ -19,6 +19,7 @@ PERIODS: dict[AssetClass, list[str]] = {
     AssetClass.EQUITY: [
         "Preco de referencia: fechamento com no maximo 3 dias.",
         "Retorno, volatilidade e drawdown: cerca de 3 meses de pregoes diarios.",
+        "return_3m, return_6m e return_12m: so quando a serie alcanca a janela.",
         "Faixa de 52 semanas: campo da cotacao, separado da janela de retorno.",
         "P/L, P/VP, LPA e dividend yield: estatistica current, com o trimestre informado pelo provedor.",
         "Manchetes: ate 3, dos ultimos 7 dias, so titulo, fonte e data.",
@@ -26,6 +27,7 @@ PERIODS: dict[AssetClass, list[str]] = {
     AssetClass.REAL_ESTATE: [
         "Preco de referencia: fechamento com no maximo 3 dias.",
         "Retorno, volatilidade e drawdown: cerca de 3 meses de pregoes diarios.",
+        "return_3m, return_6m e return_12m: so quando a serie alcanca a janela.",
         "Distribuicao do fundo: observacao com no maximo 45 dias.",
         "Vacancia: so para fundo de tijolo.",
     ],
@@ -41,6 +43,11 @@ def periods_for(asset_class: AssetClass) -> list[str]:
     return list(PERIODS[asset_class])
 
 
+_TYPE_LABEL = {
+    AssetClass.EQUITY: "Ações",
+    AssetClass.REAL_ESTATE: "FIIs",
+    AssetClass.CRYPTO: "Cripto",
+}
 _ANSWERED_WINDOW = re.compile(r"os dois|3 meses|faixa", re.IGNORECASE)
 _CHOICE_FOLLOW = re.compile(r"cotacao|multiplo|noticia|cenario|faixa|3 meses|os dois", re.IGNORECASE)
 
@@ -58,6 +65,34 @@ class ChoicePrompt:
     options: tuple[ChoiceOption, ...]
 
 
+def catalog_prompt(entries: list[CatalogEntry], *, source: str | None = None) -> str:
+    lines = [source or "Estes sao os ativos do catalogo da API, agrupados por tipo."]
+    for asset_class, title in _TYPE_LABEL.items():
+        rows = [entry for entry in entries if entry.asset_class is asset_class]
+        if not rows:
+            continue
+        lines.append(title + ": " + ", ".join(f"{entry.symbol} ({entry.name})" for entry in rows))
+    return "\n".join(lines)
+
+
+def catalog_choice(entries: list[CatalogEntry], *, prompt: str, value_prefix: str) -> ChoicePrompt:
+    options = tuple(
+        ChoiceOption(
+            f"{_TYPE_LABEL[entry.asset_class]} · {entry.symbol} · {_short_name(entry.name)}",
+            f"{value_prefix} {entry.symbol}",
+        )
+        for entry in entries
+    )
+    return ChoicePrompt(mode="single", prompt=prompt, options=options)
+
+
+def _short_name(name: str) -> str:
+    cleaned = " ".join(name.split())
+    if len(cleaned) <= 48:
+        return cleaned
+    return cleaned[:45].rstrip() + "..."
+
+
 def continues_session(text: str) -> bool:
     return bool(_HORIZON.search(text) or _ANSWERED_WINDOW.search(text) or _CHOICE_FOLLOW.search(text))
 
@@ -71,7 +106,11 @@ def render_choice(prompt: ChoicePrompt) -> str:
     return f"{prompt.prompt}\n\n```assetmind-choices\n{json.dumps(payload, ensure_ascii=False)}\n```"
 
 
-def intake_question(text: str, assets: list[AssetRequest]) -> ChoicePrompt | None:
+def intake_question(
+    text: str,
+    assets: list[AssetRequest],
+    entries: list[CatalogEntry] | tuple[CatalogEntry, ...] | None = None,
+) -> ChoicePrompt | None:
     """Question that must be answered before this turn runs."""
 
     for asset in assets:
@@ -127,9 +166,10 @@ def intake_question(text: str, assets: list[AssetRequest]) -> ChoicePrompt | Non
             ),
         )
     if _NEWS.search(text) and not assets:
-        return ChoicePrompt(
-            mode="single",
+        page = choice_page(entries if entries is not None else CATALOG, text)
+        return catalog_choice(
+            page,
             prompt="De qual ativo devo buscar as manchetes?",
-            options=tuple(ChoiceOption(entry.symbol, f"noticias {entry.symbol}") for entry in CATALOG),
+            value_prefix="noticias",
         )
     return None

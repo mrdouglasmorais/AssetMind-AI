@@ -1,39 +1,26 @@
 ---
 name: token-balance
-description: Read the running token ledger before adding a model call.
+description: Reserve and record estimated tokens separately from provider-reported usage.
 ---
 
 # Token balance
 
 ## Purpose
-Show how many tokens an analysis has estimated and how many remain in the allowance.
+Show what the run estimated, what the provider later reported, and what remains of `ASSETMIND_TOKEN_ALLOWANCE`.
 
-## When to apply
-Before a narrative model call, and whenever the caller asks about consumption.
+## Inputs
+Usage rows already stored, the allowance, and the price rates in configuration. Do not call a model to estimate tokens.
 
-## Required inputs
-The usage rows already stored for this database and `ASSETMIND_TOKEN_ALLOWANCE`.
+## Procedure
+1. Estimate text at four characters per token before the call. Cost uses the configured USD rates and is not an invoice.
+2. Refuse the narration when the reservation exceeds the per-call cap or the remaining allowance.
+3. Write estimated input and estimated output on the ledger. Leave actual tokens null until the gateway reports a non-zero usage. A missing actual count is not a zero that hides the estimate.
+4. A Groq narration is a row of kind `chat`. A news lookup is kind `news`: one provider call and no model tokens. A session embedding, when enabled, is kind `embedding`.
+5. Read the public balance at `GET /api/v1/usage/balance`. Remaining tokens subtract the estimated total from the allowance.
+6. Cache hits and failed calls stay visible. Do not double-count one reservation as two analyses.
 
-## Permitted tools
-None. Do not estimate tokens by calling a model.
+## Output
+Estimated tokens, remaining allowance, model calls, provider calls, and estimated USD. Actual tokens appear only after a provider report.
 
-## Domain rules
-Estimated usage and actual provider usage stay in separate fields. Remaining tokens subtract the estimated total from the allowance. A missing actual count stays zero until the provider reports it. A Groq narration is its own ledger row. The call is refused when the reservation exceeds the per-call cap or the remaining allowance. A news lookup counts as one provider call and does not spend model tokens.
-
-## Calculation requirements
-Estimate text at four characters per token. Cost uses the configured USD rates and is not an invoice.
-
-## Evidence requirements
-Cite the analysis count and the call counts. Do not invent a provider invoice.
-
-## Expected output
-Estimated tokens, remaining allowance, model calls, provider calls, and estimated USD.
-
-## Failure conditions
-The next estimated call would pass the per-analysis token cap or the allowance.
-
-## Examples
-Two analyses that estimated 800 tokens against an allowance of 100000 leave 99200.
-
-## Evaluation cases
-Actual tokens are absent until recorded. The remaining balance never uses the actual field to hide estimated spend.
+## Tests
+Two analyses that estimated 800 tokens against an allowance of 100000 leave 99200. A news row does not increase model tokens. The remaining balance is computed from the estimate.

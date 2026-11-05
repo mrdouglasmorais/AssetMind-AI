@@ -13,3 +13,4 @@ alwaysApply: false
 - Apply vacancy only when a FII is classified as brick.
 - Label scenario shocks as assumptions. Do not call them probabilities.
 - Truncate price series at `as_of` before any calculation.
+- A named investor pattern may only restate an emitted metric. Do not add intrinsic value, a ceiling price, a dividend hurdle, a moat score, or a crypto price model.

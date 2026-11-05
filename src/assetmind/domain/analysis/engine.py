@@ -5,16 +5,19 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from assetmind.domain.analysis.metrics import (
+    FieldCoverage,
     MetricResult,
     annualized_volatility,
     buy_and_hold_backtest,
     compound_return,
     dividend_yield,
+    field_coverage,
     historical_distribution,
     maximum_drawdown,
     price_shock,
     simple_moving_average,
     truncate_prices,
+    windowed_return,
 )
 from assetmind.domain.assets.identity import AssetClass, ResolvedAsset
 from assetmind.domain.evidence.freshness import assess_freshness
@@ -50,6 +53,7 @@ class AssetAnalysis(BaseModel):
     uncertainties: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
     issues: list[ValidationIssue] = Field(default_factory=list)
+    coverage: FieldCoverage = Field(default_factory=FieldCoverage)
 
 
 class MarketSnapshot(BaseModel):
@@ -88,6 +92,9 @@ def analyze_snapshot(
             maximum_drawdown(prices),
             simple_moving_average(prices, 3),
             buy_and_hold_backtest(prices),
+            windowed_return(prices, name="return_3m", horizon_days=92, tolerance_days=7),
+            windowed_return(prices, name="return_6m", horizon_days=183, tolerance_days=7),
+            windowed_return(prices, name="return_12m", horizon_days=365, tolerance_days=10),
         ):
             if metric is not None:
                 metrics.append(metric)
@@ -119,6 +126,7 @@ def analyze_snapshot(
     if len(prices) < 2:
         status = "partial" if metrics or prices else "failed"
 
+    brick = fund is not None and fund.classification is FundClassification.BRICK
     return AssetAnalysis(
         asset=snapshot.asset,
         status=status,
@@ -128,6 +136,11 @@ def analyze_snapshot(
         uncertainties=_unique(uncertainties),
         risks=risks,
         issues=validation.issues,
+        coverage=field_coverage(
+            snapshot.asset.asset_class.value,
+            metrics,
+            include_vacancy=brick,
+        ),
     )
 
 

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assetmind.local/schemas/report.json",
+  "title": "AssetMindReport",
+  "description": "Relatório publicado. Cenários são choques de preço ilustrativos. Este contrato não tem campo de probabilidade.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["language", "status", "summary", "assets", "disclaimer", "usage"],
+  "properties": {
+    "language": { "const": "pt-BR" },
+    "status": { "enum": ["completed", "partial", "failed"] },
+    "composer": { "type": "string" },
+    "summary": { "type": "string" },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "asset_class", "status", "narrative", "metrics"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "asset_class": { "enum": ["equity", "crypto", "real_estate"] },
+          "status": { "type": "string" },
+          "narrative": { "type": "string" },
+          "metrics": { "type": "array" },
+          "scenarios": { "type": "array" },
+          "uncertainties": { "type": "array" },
+          "risks": { "type": "array" },
+          "sources": { "type": "array" },
+          "coverage": {
+            "type": "object",
+            "description": "present divided by requested. Not a buy or sell grade.",
+            "properties": {
+              "requested": { "type": "array", "items": { "type": "string" } },
+              "present": { "type": "array", "items": { "type": "string" } },
+              "refused": { "type": "array", "items": { "type": "string" } },
+              "score": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "disclaimer": { "type": "string" },
+    "validation_issues": { "type": "array" },
+    "orchestration": { "type": "array", "items": { "type": "string" } },
+    "usage": { "type": "object" }
+  }
+}

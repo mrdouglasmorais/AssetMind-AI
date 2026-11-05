@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | GET | `/health` | Public |
 | GET | `/ready` | Public |
-| GET | `/api/v1/assets/search?q=` | API key |
+| GET | `/api/v1/assets/search?q=` | API key. Live mode pages the brapi quote list and the CoinGecko coin list, then returns a page in `results` and `by_type`. Fixture mode uses the local sample. |
 | POST | `/api/v1/analyses` | API key |
 | GET | `/api/v1/analyses/{id}` | API key |
 | GET | `/api/v1/analyses/{id}/events` | API key |

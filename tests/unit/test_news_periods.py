@@ -40,12 +40,37 @@ def test_headlines_keep_three_titles_and_drop_the_rest() -> None:
     assert items[0]["published_at"] == "2026-11-04T18:00:00+00:00"
     assert items[0]["retrieved_at"] == "2026-11-05T00:00:00+00:00"
     assert items[0]["relevance"] == "search"
+    assert items[0]["image_url"] is None
 
 
 def test_periods_keep_the_return_window_separate_from_52_weeks() -> None:
     lines = periods_for(AssetClass.EQUITY)
     assert any("3 meses" in line for line in lines)
     assert any("52 semanas" in line and "separado" in line for line in lines)
+
+
+async def test_asking_for_asset_types_returns_the_catalog_grouped() -> None:
+    class _Idle:
+        async def run(self, **_kwargs: object) -> object:
+            raise AssertionError("a catalog list must not fetch the market")
+
+    text = await answer_message(
+        _Idle(),  # type: ignore[arg-type]
+        Settings(api_key="local", groq_api_key=None, embedding_provider="hashed"),
+        "tipos de ativos",
+    )
+    assert "Ações: PETR4" in text
+    assert "FIIs: HGLG11" in text
+    assert "Cripto: bitcoin" in text
+    assert "```assetmind-choices" in text
+    assert '"value": "analise PETR4"' in text
+    equities = await answer_message(
+        _Idle(),  # type: ignore[arg-type]
+        Settings(api_key="local", groq_api_key=None, embedding_provider="hashed"),
+        "quais acoes",
+    )
+    assert "PETR4" in equities
+    assert "bitcoin" not in equities
 
 
 def test_a_ticker_ending_in_11_keeps_the_class_from_the_reply() -> None:
@@ -84,6 +109,8 @@ def test_missing_class_horizon_and_news_each_ask_one_question() -> None:
     assert news is not None
     assert news.prompt == "De qual ativo devo buscar as manchetes?"
     assert any(option.value == "noticias PETR4" for option in news.options)
+    assert any(option.label.startswith("Ações · PETR4") for option in news.options)
+    assert any(option.label.startswith("FIIs · HGLG11") for option in news.options)
     long_window = intake_question("retorno em 5 anos da PETR4", [])
     assert long_window is not None
     assert "3 meses" in long_window.prompt
@@ -120,6 +147,33 @@ def test_invalid_or_incomplete_feed_items_are_dropped() -> None:
     )
     assert kept[0]["publisher"] == "Google News"
     assert kept[0]["published_at"] is None
+
+
+def test_item_image_is_kept_and_the_article_is_not_fetched() -> None:
+    feed = """<?xml version="1.0"?>
+<rss xmlns:media="http://search.yahoo.com/mrss/"><channel>
+<image><url>https://lh3.googleusercontent.com/logo</url></image>
+<item>
+<title>Com foto</title>
+<link>https://news.google.com/rss/articles/img</link>
+<media:content url="http://insecure.example/a.jpg" medium="image"/>
+</item>
+<item>
+<title>Foto segura</title>
+<link>https://news.google.com/rss/articles/ok</link>
+<description>&lt;img src="https://news.google.com/api/attachments/thumb"&gt;</description>
+</item>
+<item>
+<title>Local</title>
+<link>https://news.google.com/rss/articles/local</link>
+<media:content url="https://127.0.0.1/a.jpg" medium="image"/>
+</item>
+</channel></rss>"""
+    items = parse_headlines(feed, symbol="PETR4")
+    by_title = {item["title"]: item["image_url"] for item in items}
+    assert by_title["Com foto"] is None
+    assert by_title["Foto segura"] == "https://news.google.com/api/attachments/thumb"
+    assert by_title["Local"] is None
 
 
 @pytest.mark.asyncio
@@ -168,6 +222,7 @@ async def test_news_only_turn_names_the_source_and_does_not_analyze(monkeypatch:
 
     text = await answer_message(_Idle(), Settings(api_key="local"), "noticias PETR4")  # type: ignore[arg-type]
     assert "Fonte de consulta: Google News." in text
+    assert "```assetmind-news" in text
     assert "Titulo um" in text
     assert "nao e copiado" in text
 

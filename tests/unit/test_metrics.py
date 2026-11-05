@@ -7,10 +7,12 @@ from assetmind.domain.analysis.metrics import (
     annualized_volatility,
     buy_and_hold_backtest,
     compound_return,
+    field_coverage,
     maximum_drawdown,
     price_shock,
     simple_moving_average,
     simple_returns,
+    windowed_return,
 )
 from assetmind.domain.evidence.models import PricePoint
 
@@ -38,6 +40,21 @@ def test_known_return_drawdown_and_volatility() -> None:
     assert price_shock(10, -0.2) == 8
     backtest = buy_and_hold_backtest(prices)
     assert backtest is not None and backtest.name == "buy_and_hold_backtest"
+
+
+def test_three_month_return_uses_the_horizon_and_refuses_a_short_span() -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    prices = [
+        PricePoint(observed_at=start + timedelta(days=index), close=10 + index, currency="BRL") for index in range(100)
+    ]
+    three = windowed_return(prices, name="return_3m", horizon_days=92, tolerance_days=7)
+    six = windowed_return(prices, name="return_6m", horizon_days=183, tolerance_days=7)
+    assert three.value == pytest.approx(109 / 17 - 1)
+    assert six.value is None
+    coverage = field_coverage("equity", [three, six], include_vacancy=False)
+    assert coverage.present == ["return_3m"]
+    assert "return_6m" in coverage.refused
+    assert coverage.score == pytest.approx(1 / 13)
 
 
 def test_short_sample_has_no_volatility() -> None:

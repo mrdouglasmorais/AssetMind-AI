@@ -5,13 +5,62 @@ already be truncated at the analysis clock so later observations cannot leak in.
 """
 
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
 from assetmind.domain.evidence.models import PricePoint
+
+
+class FieldCoverage(BaseModel):
+    """Share of requested card fields that arrived with a number.
+
+    The score is present / requested. It is not a buy or sell grade.
+    """
+
+    requested: list[str] = Field(default_factory=list)
+    present: list[str] = Field(default_factory=list)
+    refused: list[str] = Field(default_factory=list)
+    score: float = 0.0
+
+
+_EQUITY_FIELDS = (
+    "reference_price",
+    "compound_return",
+    "return_3m",
+    "return_6m",
+    "return_12m",
+    "annualized_volatility",
+    "maximum_drawdown",
+    "week52_low",
+    "week52_high",
+    "price_to_earnings",
+    "earnings_per_share",
+    "p_vp",
+    "dividend_yield",
+)
+_FUND_FIELDS = (
+    "reference_price",
+    "compound_return",
+    "return_3m",
+    "return_6m",
+    "return_12m",
+    "annualized_volatility",
+    "maximum_drawdown",
+    "p_vp",
+    "dividend_yield",
+)
+_CRYPTO_FIELDS = (
+    "reference_price",
+    "compound_return",
+    "return_3m",
+    "return_6m",
+    "return_12m",
+    "annualized_volatility",
+    "maximum_drawdown",
+)
 
 
 class MetricResult(BaseModel):
@@ -23,6 +72,29 @@ class MetricResult(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     interpretation: str
+
+
+def field_coverage(
+    asset_class: str,
+    metrics: list[MetricResult],
+    *,
+    include_vacancy: bool,
+) -> FieldCoverage:
+    """requested are the card fields. present have a number. refused do not."""
+
+    fields = _EQUITY_FIELDS
+    if asset_class == "crypto":
+        fields = _CRYPTO_FIELDS
+    elif asset_class == "real_estate":
+        fields = _FUND_FIELDS
+    requested: list[str] = list(fields)
+    if include_vacancy:
+        requested.append("vacancy_rate")
+    by_name = {metric.name: metric for metric in metrics}
+    present = [name for name in requested if (item := by_name.get(name)) is not None and item.value is not None]
+    refused = [name for name in requested if name not in present]
+    score = len(present) / len(requested) if requested else 0.0
+    return FieldCoverage(requested=requested, present=present, refused=refused, score=score)
 
 
 def truncate_prices(prices: list[PricePoint], as_of: datetime | None) -> list[PricePoint]:
@@ -183,6 +255,58 @@ def price_shock(price: float, shock: float) -> float:
     """shocked_price = reference_price * (1 + shock)."""
 
     return price * (1 + shock)
+
+
+def windowed_return(
+    prices: list[PricePoint],
+    *,
+    name: str,
+    horizon_days: int,
+    tolerance_days: int,
+) -> MetricResult:
+    """Realized return = close_end / close_horizon_start - 1.
+
+    Horizon start is the first close at or after (end - horizon_days).
+    The value stays empty when that span is shorter than horizon_days - tolerance_days.
+    Units are a fraction of the starting close. This is not a forecast.
+    """
+
+    limitations = [
+        "Empty when the received series does not reach the horizon.",
+        "Ignores cash flows unless the series is already adjusted.",
+    ]
+    if len(prices) < 2:
+        return _empty_window(name, horizon_days, limitations)
+    end = prices[-1].observed_at
+    window = [point for point in prices if point.observed_at >= end - timedelta(days=horizon_days)]
+    if len(window) < 2:
+        return _empty_window(name, horizon_days, limitations)
+    span_days = (window[-1].observed_at - window[0].observed_at).days
+    if span_days < horizon_days - tolerance_days or window[0].close <= 0:
+        return _empty_window(name, horizon_days, limitations)
+    value = window[-1].close / window[0].close - 1
+    return MetricResult(
+        name=name,
+        value=value,
+        unit="fraction",
+        formula="close_end / first_close_inside_horizon - 1",
+        sampling=f"{observation_window(window)}; horizon {horizon_days} calendar days",
+        assumptions=["Prices are positive and already truncated at the analysis clock."],
+        limitations=["The horizon is calendar days, not a count of trading sessions."],
+        interpretation=f"Realized buy-and-hold return over about {horizon_days} calendar days.",
+    )
+
+
+def _empty_window(name: str, horizon_days: int, limitations: list[str]) -> MetricResult:
+    return MetricResult(
+        name=name,
+        value=None,
+        unit="fraction",
+        formula="close_end / first_close_inside_horizon - 1",
+        sampling=f"horizon {horizon_days} calendar days",
+        limitations=limitations,
+        interpretation="No close covers this horizon in the received series.",
+    )
 
 
 def buy_and_hold_backtest(prices: list[PricePoint]) -> MetricResult | None:
