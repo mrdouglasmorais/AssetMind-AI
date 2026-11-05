@@ -32,9 +32,7 @@ class SessionVectorStore:
             )
             """
         )
-        self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS session_vectors_session ON session_vectors(session_id)"
-        )
+        self._connection.execute("CREATE INDEX IF NOT EXISTS session_vectors_session ON session_vectors(session_id)")
         self._connection.commit()
 
     def remember(self, session_id: str, role: str, text: str, symbols: list[str]) -> None:

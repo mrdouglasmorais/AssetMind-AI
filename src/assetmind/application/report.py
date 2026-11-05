@@ -117,8 +117,7 @@ def _asset_lines(
     rows = [f"Ativo {analysis.asset.symbol} ({analysis.asset.asset_class.value}), status {analysis.status}."]
     if synthetic:
         rows.append(
-            "Cotacao de mercado indisponivel. "
-            "A serie local e sintetica de teste e nao e preco, volume ou retorno."
+            "Cotacao de mercado indisponivel. A serie local e sintetica de teste e nao e preco, volume ou retorno."
         )
     elif not metrics:
         rows.append("Nenhum indicador numerico pode ser apresentado com a evidencia disponivel.")
@@ -126,9 +125,7 @@ def _asset_lines(
         if metric.value is None:
             rows.append(f"{metric.name}: indisponivel.")
         else:
-            rows.append(
-                f"{metric.name}: {_format_number(metric.value)} {metric.unit}. Amostra: {metric.sampling}."
-            )
+            rows.append(f"{metric.name}: {_format_number(metric.value)} {metric.unit}. Amostra: {metric.sampling}.")
     if synthetic:
         rows.append("Cenarios de preco omitidos: nao ha cotacao de mercado para aplicar o choque.")
     for scenario in [] if synthetic else scenarios:
@@ -185,8 +182,7 @@ def _summary(analyses: list[AssetAnalysis], status: str) -> str:
             "Nenhum preco de mercado foi publicado porque a unica serie disponivel e sintetica de teste."
         )
     return (
-        f"Analise {status} para {symbols}. "
-        "Os numeros abaixo repetem os calculos deterministicos e a fonte registrada."
+        f"Analise {status} para {symbols}. Os numeros abaixo repetem os calculos deterministicos e a fonte registrada."
     )
 
 

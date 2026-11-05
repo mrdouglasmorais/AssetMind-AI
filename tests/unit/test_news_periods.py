@@ -88,7 +88,9 @@ def test_invalid_or_incomplete_feed_items_are_dropped() -> None:
         parse_headlines("<rss>")
     blank = "<rss><channel><item><title>   </title><link>https://news.google.com/a</link></item></channel></rss>"
     assert parse_headlines(blank) == []
-    kept = parse_headlines("<rss><channel><item><title>Um</title><link>https://news.google.com/a</link></item></channel></rss>")
+    kept = parse_headlines(
+        "<rss><channel><item><title>Um</title><link>https://news.google.com/a</link></item></channel></rss>"
+    )
     assert kept[0]["publisher"] == "Google News"
     assert kept[0]["published_at"] is None
 

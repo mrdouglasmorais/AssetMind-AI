@@ -22,8 +22,7 @@ def test_retrieval_prefers_shared_words_and_misses_a_paraphrase() -> None:
     collision = next(
         word
         for number in range(10000)
-        if (word := f"zz{number}")
-        and hashlib.sha256(word.encode()).digest()[0] % 64 == target
+        if (word := f"zz{number}") and hashlib.sha256(word.encode()).digest()[0] % 64 == target
     )
     assert cosine(embed("bitcoin"), embed(collision)) != 0
 

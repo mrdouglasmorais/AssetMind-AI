@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP = {".venv", ".git", ".pytest_cache", ".ruff_cache", "htmlcov"}
+SKIP = {".venv", ".git", ".pytest_cache", ".ruff_cache", "htmlcov", "node_modules", ".next"}
 PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----"),
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
