@@ -11,4 +11,4 @@ Accepted decisions are in `docs/adr`. The short version:
 - Context sent to a model is a metric summary.
 - Evidence keeps provenance and is validated before presentation.
 - Render is the target host. A live deploy is still pending.
-- RAG is deferred until a filing-search use case exists.
+- Chat sessions are chunked and embedded. A filing corpus and pgvector stay deferred.

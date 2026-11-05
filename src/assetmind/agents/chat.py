@@ -23,6 +23,7 @@ from assetmind.application.budget import (
     narration_snapshot,
     provider_probe_snapshot,
 )
+from assetmind.application.embeddings import build_session_embedder
 from assetmind.application.service import AnalysisService
 from assetmind.application.session_vectors import SessionVectorStore
 from assetmind.config.settings import Settings
@@ -68,7 +69,10 @@ def build_chat_agent(
     *,
     memory: SessionVectorStore | None = None,
 ) -> Agent:
-    store = memory or SessionVectorStore(_memory_path(settings))
+    store = memory or SessionVectorStore(
+        _memory_path(settings),
+        embedder=build_session_embedder(settings, getattr(service, "repository", None)),
+    )
 
     def knowledge_retriever(
         query: str,
@@ -249,15 +253,10 @@ async def answer_message(
         rendered += "\n\n" + await _headline_text(assets[0].symbol)
     balance = service.repository.token_balance(settings.token_allowance)
     rendered += "\n\n" + format_token_balance(balance)
-    _remember(memory, session_id, text, [asset.symbol for asset in assets])
+    symbols = [asset.symbol for asset in assets]
+    _remember(memory, session_id, text, symbols)
     if memory is not None:
-        symbols = [asset.symbol for asset in assets]
-        memory.remember(
-            session_id,
-            "assistant",
-            f"ativos analisados: {', '.join(symbols)}. {WINDOW_NOTE}",
-            symbols,
-        )
+        memory.remember(session_id, "assistant", rendered, symbols)
     return rendered
 
 

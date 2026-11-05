@@ -1,6 +1,6 @@
 # ADR 0013 — Local session vectors
 
-Status: accepted
+Status: accepted. ADR 0018 adds chunking and an optional Groq embedding model. This hashed index remains the offline path.
 
 Context: The chat agent treated every message as a new request. Replaying full reports would exceed the token budget, and the model then said the session history was unavailable.
 

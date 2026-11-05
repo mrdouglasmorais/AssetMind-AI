@@ -1,6 +1,6 @@
 # ADR 0010 — Defer RAG
 
-Status: accepted
+Status: accepted, amended by ADR 0018 for chat-session retrieval. A filing corpus and a vector database remain deferred.
 
 Context: The MVP answers from structured market data and a few labeled fund facts. It does not search a corpus.
 

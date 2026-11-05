@@ -39,6 +39,14 @@ class Settings(BaseSettings):
         default="openai/gpt-oss-120b",
         validation_alias=AliasChoices("ASSETMIND_GROQ_MODEL"),
     )
+    embedding_provider: str = Field(
+        default="hashed",
+        validation_alias=AliasChoices("ASSETMIND_EMBEDDING_PROVIDER"),
+    )
+    embedding_model: str = Field(
+        default="nomic-embed-text-v1.5",
+        validation_alias=AliasChoices("ASSETMIND_EMBEDDING_MODEL"),
+    )
     openrouter_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENROUTER_API_KEY", "ASSETMIND_OPENROUTER_API_KEY"),
@@ -95,6 +103,13 @@ class Settings(BaseSettings):
     def _llm_provider(cls, value: str) -> str:
         if value not in {"groq", "openrouter"}:
             raise ValueError("ASSETMIND_LLM_PROVIDER must be groq or openrouter.")
+        return value
+
+    @field_validator("embedding_provider")
+    @classmethod
+    def _embedding_provider(cls, value: str) -> str:
+        if value not in {"hashed", "groq"}:
+            raise ValueError("ASSETMIND_EMBEDDING_PROVIDER must be hashed or groq.")
         return value
 
     @property

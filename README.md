@@ -79,7 +79,7 @@ As skills em `.cursor/skills/` orientam o agente que escreve este repositório. 
 | Linguagem | Python 3.13, com suporte declarado a 3.12 |
 | Orquestração | Agno 3.1.12: `Workflow`, `Step` e `Parallel` |
 | API | FastAPI e Pydantic v2 |
-| Modelos | Groq no chat quando `GROQ_API_KEY` está definida; sem a chave o relatório sai direto |
+| Modelos | Groq no chat quando `GROQ_API_KEY` está definida; sem a chave o relatório sai direto. A sessão é fatiada e, com `ASSETMIND_EMBEDDING_PROVIDER=groq`, embutida por `nomic-embed-text-v1.5` |
 | Dados | PostgreSQL em produção, SQLite para desenvolvimento e testes |
 | Migrações | SQLAlchemy 2 e Alembic |
 | HTTP | HTTPX assíncrono |
@@ -217,7 +217,7 @@ A suíte padrão usa fixtures e `MockTransport`. Ela não chama modelo pago nem 
 
 Verificado neste workspace em 5 de novembro de 2026:
 
-- Ruff, Pyright e pytest passaram. A cobertura ficou em 87,08%, com 67 testes.
+- Ruff, Pyright e pytest passaram. A cobertura ficou em 87,12%, com 75 testes.
 - A imagem `assetmind-ai:local` respondeu `/health`, `/ready` e uma análise fixture de ação, cripto e FII, com zero chamadas de modelo.
 - brapi (`PETR4`), a série 432 do Banco Central e o CoinGecko (`bitcoin`) responderam HTTP 200. Essas chamadas ficam fora da suíte.
 

@@ -1,8 +1,8 @@
 """SQLite vector index for one chat session.
 
-Brute-force cosine search is enough for a short conversation. The retrieved
-text is capped by an estimated token budget so a later model call does not
-replay full reports.
+Each turn is chunked. Retrieval embeds the question with the same embedder
+that wrote the chunks and keeps the result inside a token budget. A model
+failure falls back to the hashed index so the turn is still stored.
 """
 
 import json
@@ -10,13 +10,23 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 
+from assetmind.domain.errors import BudgetExceededError
+from assetmind.domain.memory.chunks import chunk_text
+from assetmind.domain.memory.embedder import HASHED_EMBEDDER, EmbeddingError, HashedEmbedder, TextEmbedder
 from assetmind.domain.memory.vectors import cosine, embed, estimate_tokens
 
 
 class SessionVectorStore:
-    def __init__(self, path: str, *, token_budget: int = 600) -> None:
+    def __init__(
+        self,
+        path: str,
+        *,
+        token_budget: int = 600,
+        embedder: TextEmbedder | None = None,
+    ) -> None:
         self.path = path
         self.token_budget = token_budget
+        self._embedder = embedder or HashedEmbedder()
         self._lock = threading.Lock()
         self._connection = sqlite3.connect(path, check_same_thread=False)
         self._connection.execute(
@@ -32,28 +42,34 @@ class SessionVectorStore:
             )
             """
         )
+        columns = {str(row[1]) for row in self._connection.execute("PRAGMA table_info(session_vectors)")}
+        if "chunk_index" not in columns:
+            self._connection.execute("ALTER TABLE session_vectors ADD COLUMN chunk_index INTEGER NOT NULL DEFAULT 0")
+        if "embedder" not in columns:
+            self._connection.execute(
+                "ALTER TABLE session_vectors ADD COLUMN embedder TEXT NOT NULL DEFAULT 'hashed-64'"
+            )
         self._connection.execute("CREATE INDEX IF NOT EXISTS session_vectors_session ON session_vectors(session_id)")
         self._connection.commit()
 
     def remember(self, session_id: str, role: str, text: str, symbols: list[str]) -> None:
-        compact = " ".join(text.split())
-        if not compact:
+        chunks = chunk_text(text)
+        if not chunks:
             return
-        payload = (
-            session_id,
-            role,
-            compact[:500],
-            json.dumps(symbols),
-            json.dumps(embed(compact)),
-            datetime.now(UTC).isoformat(),
-        )
+        embedder_name, vectors = self._vectors(chunks)
+        created_at = datetime.now(UTC).isoformat()
+        rows = [
+            (session_id, role, chunk, json.dumps(symbols), json.dumps(vector), created_at, index, embedder_name)
+            for index, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True))
+        ]
         with self._lock:
-            self._connection.execute(
+            self._connection.executemany(
                 """
-                INSERT INTO session_vectors (session_id, role, text, symbols, vector, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO session_vectors
+                    (session_id, role, text, symbols, vector, created_at, chunk_index, embedder)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                payload,
+                rows,
             )
             self._connection.commit()
 
@@ -89,7 +105,7 @@ class SessionVectorStore:
     def recall(self, session_id: str, query: str, *, limit: int = 4) -> list[dict[str, str]]:
         rows = self._connection.execute(
             """
-            SELECT role, text, vector FROM session_vectors
+            SELECT role, text, vector, embedder FROM session_vectors
             WHERE session_id = ?
             ORDER BY id ASC
             """,
@@ -97,13 +113,23 @@ class SessionVectorStore:
         ).fetchall()
         if not rows:
             return []
-        query_vector = embed(query)
+        query_name, query_vectors = self._vectors([query])
+        query_vector = query_vectors[0]
+        comparable = [
+            (str(role), str(text), json.loads(str(vector)))
+            for role, text, vector, embedder_name in rows
+            if str(embedder_name) == query_name
+        ]
         ranked = sorted(
-            ((cosine(query_vector, json.loads(str(vector))), str(role), str(text)) for role, text, vector in rows),
+            (
+                (cosine(query_vector, vector), role, text)
+                for role, text, vector in comparable
+                if len(vector) == len(query_vector)
+            ),
             key=lambda item: item[0],
             reverse=True,
         )
-        first = next((text for role, text, _vector in rows if role == "user"), None)
+        first = next((str(text) for role, text, _vector, _name in rows if role == "user"), None)
         chosen: list[str] = []
         used = 0
         if first is not None:
@@ -131,3 +157,14 @@ class SessionVectorStore:
                 "orcamento_tokens": str(self.token_budget),
             }
         ]
+
+    def _vectors(self, texts: list[str]) -> tuple[str, list[list[float]]]:
+        try:
+            vectors = self._embedder.embed_many(texts)
+        except (EmbeddingError, BudgetExceededError):
+            vectors = []
+        if len(vectors) == len(texts) and vectors and all(vector for vector in vectors):
+            width = len(vectors[0])
+            if all(len(vector) == width for vector in vectors):
+                return self._embedder.name, vectors
+        return HASHED_EMBEDDER, [embed(text) for text in texts]
