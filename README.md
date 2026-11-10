@@ -221,7 +221,7 @@ Verificado neste workspace em 5 de novembro de 2026:
 
 ## Deploy
 
-O [Dockerfile](infra/docker/Dockerfile) escuta `0.0.0.0:$PORT`. O alvo principal é **OCI Always Free**: Terraform em [infra/oci](infra/oci) sobe uma VM Ampere A1 com Docker; [docker-compose.oci.yml](infra/docker/docker-compose.oci.yml) sobe a API e o Postgres no mesmo host, com AgentOS desligado e health check em `/health`. Autonomous Database da OCI não é usado (o produto exige PostgreSQL). O módulo Terraform foi escrito; um `apply` ao vivo ainda não é afirmado aqui.
+O [Dockerfile](infra/docker/Dockerfile) é multiarch (alvo ARM64) e expõe papéis `api` / `worker` / `migrate`. O alvo principal é **OCI Always Free**: Terraform em [infra/oci](infra/oci) sobe a VM; [docker-compose.prod.yml](infra/oci/docker-compose.prod.yml) sobe Caddy, API, worker e Postgres, com AgentOS desligado. Só 80/443 saem na borda. Autonomous Database da OCI não é usado (o produto exige PostgreSQL). Guia: [docs/architecture/oci-deployment.md](docs/architecture/oci-deployment.md). Nenhum `apply` ou deploy ao vivo é afirmado aqui.
 
 O [infra/render.yaml](infra/render.yaml) permanece como blueprint alternativo (web + Postgres free). Serviço free no Render adormece após inatividade, e o Postgres free expira. Nenhum preço em dólar é afirmado aqui.
 

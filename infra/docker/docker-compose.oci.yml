@@ -1,61 +1,12 @@
-# Production-oriented compose for the OCI Always Free Ampere host.
-# Run from the repo root:
-#   docker compose -f infra/docker/docker-compose.oci.yml up -d --build
-# AgentOS stays off on the public host. Secrets come only from .env.
+# Deprecated alias.
+# Use: infra/oci/docker-compose.prod.yml
+#
+# Kept so older docs and scripts that reference this path fail loudly with direction.
 
 services:
-  db:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-assetmind}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-assetmind}
-    volumes:
-      - assetmind_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-assetmind}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - assetmind
-
-  api:
-    image: ${ASSETMIND_IMAGE:-ghcr.io/YOUR_ORG/assetmind-ai:latest}
-    build:
-      context: ../..
-      dockerfile: infra/docker/Dockerfile
-    restart: unless-stopped
-    env_file:
-      - ../../.env
-    environment:
-      PORT: "8000"
-      ASSETMIND_ENV: production
-      ASSETMIND_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-assetmind}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-assetmind}
-      ASSETMIND_AGENTOS_ENABLED: "false"
-      ASSETMIND_AGENT_UI_URL: ""
-      ASSETMIND_PROVIDER_MODE: ${ASSETMIND_PROVIDER_MODE:-live}
-      ASSETMIND_LLM_PROVIDER: ${ASSETMIND_LLM_PROVIDER:-groq}
-      ASSETMIND_GROQ_MODEL: ${ASSETMIND_GROQ_MODEL:-openai/gpt-oss-120b}
-      ASSETMIND_SKILLS_DIR: agent/skills
-    ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
-    networks:
-      - assetmind
-
-volumes:
-  assetmind_pgdata:
-
-networks:
-  assetmind:
-    driver: bridge
+  notice:
+    image: alpine:3.20
+    command:
+      - /bin/sh
+      - -c
+      - echo "Use infra/oci/docker-compose.prod.yml instead" >&2; exit 1

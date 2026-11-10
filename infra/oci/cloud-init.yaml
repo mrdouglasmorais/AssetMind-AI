@@ -34,8 +34,8 @@ write_files:
     content: |
       AssetMind deploy directory.
       Prefer syncing the full repo (see infra/oci/scripts/remote-up.sh).
-      Then: docker compose -f infra/docker/docker-compose.oci.yml up -d --build
-      Health: curl -fsS http://127.0.0.1:8000/health
+      Then: ./infra/oci/scripts/deploy.sh
+      Health: curl -fsS http://127.0.0.1/health
 
 runcmd:
   - install -m 0755 -d /etc/apt/keyrings

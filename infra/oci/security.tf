@@ -24,18 +24,7 @@ resource "oci_core_security_list" "public" {
   ingress_security_rules {
     protocol    = "6"
     source      = var.app_allowed_cidr
-    description = "AssetMind API."
-
-    tcp_options {
-      min = var.app_port
-      max = var.app_port
-    }
-  }
-
-  ingress_security_rules {
-    protocol    = "6"
-    source      = var.app_allowed_cidr
-    description = "HTTP for a future reverse proxy."
+    description = "HTTP for Caddy (ACME HTTP-01 and redirect)."
 
     tcp_options {
       min = 80
@@ -46,7 +35,7 @@ resource "oci_core_security_list" "public" {
   ingress_security_rules {
     protocol    = "6"
     source      = var.app_allowed_cidr
-    description = "HTTPS for a future reverse proxy."
+    description = "HTTPS for Caddy."
 
     tcp_options {
       min = 443

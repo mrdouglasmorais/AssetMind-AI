@@ -11,6 +11,8 @@ tests
 docs
 .cursor
 infra/oci/.terraform
+infra/oci/.env
 **/*.md
 !README.md
 !agent/skills/**/SKILL.md
+# Keep entrypoint and Docker build context under infra/docker.

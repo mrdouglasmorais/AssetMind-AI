@@ -1,0 +1,67 @@
+# OCI Always Free deployment
+
+Primary host for AssetMind. See also [oci-audit.md](oci-audit.md), [ADR 0022](../adr/0022-oci-always-free.md), and [ADR 0024](../adr/0024-durable-worker.md).
+
+## Topology (economic profile)
+
+```text
+Internet
+   │
+   ▼
+Caddy (:80/:443)  ──►  API (:8000, internal)
+                         │
+                         ├──► PostgreSQL (internal volume)
+                         └──► Worker (internal; queue claim in Phase 3)
+```
+
+Planning envelope: **2 OCPU / 12 GB** Ampère A1 Flex. Confirm the tenancy Always Free remaining capacity before raising OCPU/RAM. Do not allocate every megabyte to containers.
+
+| Container | mem_limit | cpus | Notes |
+| --- | --- | --- | --- |
+| postgres | 1536m | 0.50 | conservative `shared_buffers` / `max_connections` |
+| api | 1536m | 0.50 | FastAPI; AgentOS off |
+| worker | 2048m | 0.75 | Agno + NumPy headroom; concurrency 1 |
+| proxy | 256m | 0.25 | Caddy |
+| *(host)* | ~remaining | — | kernel, Docker, page cache, SSH |
+
+Expanded profile (only if free capacity exists): up to 4 OCPU / 24 GB; raise worker concurrency after measuring real memory, not before.
+
+## Deploy commands (no automatic apply)
+
+```bash
+# On the VM after SSH + bootstrap
+sudo ./infra/oci/scripts/bootstrap.sh
+cp infra/oci/.env.example infra/oci/.env   # fill secrets
+chmod +x infra/oci/scripts/*.sh
+./infra/oci/scripts/deploy.sh
+./infra/oci/scripts/healthcheck.sh
+```
+
+Migrations run once via Compose profile `migrate`. The API image does **not** migrate on every start.
+
+## Security posture
+
+- OCI + UFW: 22 (admin CIDR), 80, 443 only.
+- Postgres and worker: no published ports.
+- API: reached only through Caddy.
+- Secrets: `infra/oci/.env`, never git.
+- Always Free does **not** remove availability or data-loss risk. Same-disk backups are not DR.
+
+## Backup
+
+```bash
+./infra/oci/scripts/backup.sh
+# Then copy /var/backups/assetmind/*.sql.gz to OCI Object Storage (Always Free tier).
+CONFIRM=yes ./infra/oci/scripts/restore.sh /var/backups/assetmind/assetmind-….sql.gz
+```
+
+## Phase status
+
+| Phase | Status |
+| --- | --- |
+| 1 Audit | Done — `oci-audit.md` |
+| 2 Docker ARM64 + Compose prod | Done — this tree |
+| 3 Durable worker / job lease | Pending |
+| 4 Terraform quota-aware apply | Authored; apply requires operator |
+| 5 CI/CD deploy-oci | Pending |
+| 6 Restart / load validation on live VM | Pending authorization |

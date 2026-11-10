@@ -34,11 +34,11 @@ output "ssh_command" {
 }
 
 output "health_url" {
-  description = "Health check URL once docker compose is running."
-  value       = "http://${try(oci_core_instance.api.public_ip, "<pending>")}:${var.app_port}/health"
+  description = "Health check URL once Caddy and the API are running."
+  value       = "http://${try(oci_core_instance.api.public_ip, "<pending>")}/health"
 }
 
 output "deploy_hint" {
   description = "Next operator step after terraform apply."
-  value       = "Copy docker-compose.oci.yml and a production .env to /opt/assetmind, then run docker compose up -d. See infra/oci/README.md."
+  value       = "Bootstrap Docker, copy infra/oci/.env, then run infra/oci/scripts/deploy.sh. See infra/oci/README.md."
 }

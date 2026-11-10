@@ -52,7 +52,7 @@ variable "ssh_allowed_cidr" {
 
 variable "app_allowed_cidr" {
   type        = string
-  description = "CIDR allowed to reach the API and optional HTTP ports."
+  description = "CIDR allowed to reach HTTP/HTTPS on Caddy."
   default     = "0.0.0.0/0"
 }
 
@@ -110,8 +110,3 @@ variable "ubuntu_version" {
   default     = "22.04"
 }
 
-variable "app_port" {
-  type        = number
-  description = "Host port published for the AssetMind API container."
-  default     = 8000
-}

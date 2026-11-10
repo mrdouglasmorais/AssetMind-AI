@@ -1,0 +1,197 @@
+# AssetMind production stack for OCI Always Free (Ampere A1 / ARM64).
+# Run from the repository root:
+#   docker compose -f infra/oci/docker-compose.prod.yml --env-file infra/oci/.env --project-directory . up -d
+#
+# Economic defaults target a planning envelope of ~2 OCPU / 12 GB.
+# Confirm Always Free Ampere capacity in the tenancy before scaling up.
+#
+# Public ports: 80/443 only. Postgres, API, and worker are not published to the host.
+
+name: assetmind
+
+x-app-env: &app-env
+  ASSETMIND_ENV: production
+  ASSETMIND_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-assetmind}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-assetmind}
+  ASSETMIND_AGENTOS_ENABLED: "false"
+  ASSETMIND_AGENT_UI_URL: ""
+  ASSETMIND_SKILLS_DIR: agent/skills
+  ASSETMIND_PROVIDER_MODE: ${ASSETMIND_PROVIDER_MODE:-live}
+  ASSETMIND_LLM_PROVIDER: ${ASSETMIND_LLM_PROVIDER:-groq}
+  ASSETMIND_GROQ_MODEL: ${ASSETMIND_GROQ_MODEL:-openai/gpt-oss-120b}
+  ASSETMIND_JOB_QUEUE_ENABLED: ${ASSETMIND_JOB_QUEUE_ENABLED:-false}
+  ASSETMIND_WORKER_CONCURRENCY: ${ASSETMIND_WORKER_CONCURRENCY:-1}
+  ASSETMIND_WORKER_POLL_SECONDS: ${ASSETMIND_WORKER_POLL_SECONDS:-5}
+
+x-app-image: &app-image
+  image: ${ASSETMIND_IMAGE:-assetmind-ai:local}
+  build:
+    context: ../..
+    dockerfile: infra/docker/Dockerfile
+  env_file:
+    - path: .env
+      required: false
+  restart: unless-stopped
+  networks:
+    - assetmind
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-assetmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-assetmind}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - max_connections=40
+      - -c
+      - wal_buffers=4MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - assetmind_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-assetmind} -d ${POSTGRES_DB:-assetmind}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: 1536m
+    cpus: 0.50
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - assetmind
+    # Intentionally no ports: section — Postgres is not reachable from the host/internet.
+
+  migrate:
+    <<: *app-image
+    profiles: ["migrate"]
+    command: ["migrate"]
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.25
+    networks:
+      - assetmind
+
+  api:
+    <<: *app-image
+    command: ["api"]
+    environment:
+      <<: *app-env
+      PORT: "8000"
+      ASSETMIND_ROLE: api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    mem_limit: 1536m
+    cpus: 0.50
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - assetmind
+    # No host ports — Caddy is the only ingress.
+
+  worker:
+    <<: *app-image
+    command: ["worker"]
+    environment:
+      <<: *app-env
+      ASSETMIND_ROLE: worker
+      ASSETMIND_WORKER_ID: ${ASSETMIND_WORKER_ID:-worker-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"from assetmind.worker import check_database; check_database()\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    mem_limit: 2048m
+    cpus: 0.75
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - assetmind
+
+  proxy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      ASSETMIND_SITE_ADDRESS: ${ASSETMIND_SITE_ADDRESS:-:80}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - assetmind_caddy_data:/data
+      - assetmind_caddy_config:/config
+    mem_limit: 256m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - assetmind
+
+volumes:
+  assetmind_pgdata:
+  assetmind_caddy_data:
+  assetmind_caddy_config:
+
+networks:
+  assetmind:
+    driver: bridge

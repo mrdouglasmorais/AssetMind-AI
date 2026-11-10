@@ -2,8 +2,8 @@
 
 | Path | Role |
 | --- | --- |
-| [docker/](docker/) | Dockerfile and Compose files (local and OCI) |
-| [oci/](oci/) | Terraform for Oracle Cloud Always Free |
+| [docker/](docker/) | Multi-role Dockerfile (`api` / `worker` / `migrate`) and local Compose |
+| [oci/](oci/) | Terraform + production Compose (Caddy, API, worker, Postgres) |
 | [render.yaml](render.yaml) | Alternate Render blueprint |
 
-Application code stays in `src/`. Do not add a service per agent.
+Production entrypoint: [`oci/docker-compose.prod.yml`](oci/docker-compose.prod.yml). Application code stays in `src/`. Do not add Kubernetes or a service per agent.
