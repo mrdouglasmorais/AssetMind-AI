@@ -4,6 +4,10 @@ Terraform provisions the VM and network. Docker Compose runs the application sta
 
 **No `terraform apply` or production deploy is performed from CI without explicit operator secrets and approval.**
 
+Credentials and GitHub secrets: [`docs/architecture/oci-credentials.md`](../../docs/architecture/oci-credentials.md).
+
+Provision with soft capacity skip: `.github/workflows/provision-and-deploy-oci.yml` (schedule + manual). Set `enable_compute = false` in `terraform.tfvars` so the pipeline owns the VM.
+
 ## Layout
 
 | Path | Role |

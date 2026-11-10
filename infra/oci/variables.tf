@@ -110,3 +110,15 @@ variable "ubuntu_version" {
   default     = "22.04"
 }
 
+variable "fault_domain" {
+  type        = string
+  description = "Optional fault domain (FAULT-DOMAIN-1|2|3). Leave empty for Oracle to choose."
+  default     = ""
+}
+
+variable "enable_compute" {
+  type        = bool
+  description = "When false, Terraform manages only networking. The GitHub provision workflow owns the VM."
+  default     = true
+}
+

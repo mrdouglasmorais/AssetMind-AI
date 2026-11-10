@@ -1,8 +1,11 @@
 resource "oci_core_instance" "api" {
+  count = var.enable_compute ? 1 : 0
+
   availability_domain = local.availability_domain
   compartment_id      = var.compartment_ocid
   display_name        = var.instance_display_name
   shape               = var.shape
+  fault_domain        = var.fault_domain != "" ? var.fault_domain : null
   freeform_tags       = local.common_tags
 
   shape_config {
@@ -32,6 +35,10 @@ resource "oci_core_instance" "api" {
     are_all_plugins_disabled = false
     is_management_disabled   = false
     is_monitoring_disabled   = false
+  }
+
+  timeouts {
+    create = "30m"
   }
 
   lifecycle {
