@@ -6,4 +6,4 @@ AssetMind is a modular monolith.
 
 The workflow input is the analysis id. Steps look up an in-process run context so provider clients do not have to be serialized through Agno.
 
-See `docs/adr` for the decisions and the README for what has actually been executed.
+See `docs/adr` for the decisions, `docs/reference/` for the short index, `docs/policies/` for execution guardrails, and the README for what has actually been executed. Repository layout is ADR 0023.

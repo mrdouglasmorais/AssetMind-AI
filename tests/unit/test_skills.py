@@ -2,7 +2,7 @@ from pathlib import Path
 
 from assetmind.agents.factory import build_report_agent, build_specialist_agents, load_skill_index
 
-SKILLS = Path(__file__).resolve().parents[2] / "skills"
+SKILLS = Path(__file__).resolve().parents[2] / "agent" / "skills"
 
 
 def test_runtime_skills_load_without_a_model_call() -> None:
@@ -35,10 +35,7 @@ def test_runtime_skills_load_without_a_model_call() -> None:
 
 
 def test_skills_keep_the_engine_limits() -> None:
-    text = {
-        path.parent.name: path.read_text(encoding="utf-8")
-        for path in SKILLS.glob("*/SKILL.md")
-    }
+    text = {path.parent.name: path.read_text(encoding="utf-8") for path in SKILLS.glob("*/SKILL.md")}
     assert "zero model tokens" in text["orchestration"]
     assert "illustrative_assumption" in text["scenario-analysis"]
     assert "Monte Carlo" in text["scenario-analysis"]

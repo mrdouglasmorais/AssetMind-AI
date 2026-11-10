@@ -14,7 +14,9 @@ services:
       retries: 10
 
   api:
-    build: .
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
     environment:
       PORT: "8000"
       ASSETMIND_ENV: development
@@ -28,6 +30,7 @@ services:
       ASSETMIND_LLM_PROVIDER: groq
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       ASSETMIND_GROQ_MODEL: ${ASSETMIND_GROQ_MODEL:-openai/gpt-oss-120b}
+      ASSETMIND_SKILLS_DIR: agent/skills
     ports:
       - "8000:8000"
     depends_on:
@@ -36,7 +39,7 @@ services:
 
   ui:
     build:
-      context: .
+      context: ../..
       dockerfile: ui/Dockerfile
     ports:
       - "3000:3000"

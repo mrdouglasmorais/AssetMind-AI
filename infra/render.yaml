@@ -2,6 +2,7 @@
 # Free plans were confirmed against Render's compute-plan catalog while writing
 # this file. Free web services spin down after inactivity. Free Postgres expires.
 # This file has not been synced to a live Render account.
+# Alternate host: OCI Always Free via infra/oci (ADR 0022).
 
 databases:
   - name: assetmind-postgres
@@ -14,7 +15,7 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./infra/docker/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     envVars:
@@ -30,6 +31,8 @@ services:
         value: "false"
       - key: ASSETMIND_AGENT_UI_URL
         value: ""
+      - key: ASSETMIND_SKILLS_DIR
+        value: agent/skills
       - key: ASSETMIND_API_KEY
         sync: false
       - key: ASSETMIND_LLM_PROVIDER

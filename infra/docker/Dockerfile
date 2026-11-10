@@ -5,11 +5,12 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_NO_DEV=1 \
     PORT=10000 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ASSETMIND_SKILLS_DIR=agent/skills
 
 COPY pyproject.toml uv.lock README.md alembic.ini ./
 COPY src ./src
-COPY skills ./skills
+COPY agent ./agent
 COPY migrations ./migrations
 RUN uv sync --frozen --no-dev
 

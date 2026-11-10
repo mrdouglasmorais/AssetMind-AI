@@ -38,9 +38,9 @@ Um ticker da B3 terminado em `11` é ambíguo: pode ser unidade de ação ou cot
   <img src="docs/assets/poster.png" alt="Cartaz do AssetMind AI: usuário, orquestrador, três especialistas, dados e relatório">
 </p>
 
-O cartaz resume a intenção do projeto: um orquestrador, três caminhos de análise, uma camada de dados e um relatório com fontes. A pasta desenhada no cartaz é um mapa visual. O código vive em `src/assetmind/`, com as specs em `specs/` e as decisões em `docs/adr/`.
+O cartaz resume a intenção do projeto: um orquestrador, três caminhos de análise, uma camada de dados e um relatório com fontes. A pasta desenhada no cartaz é um mapa visual. O código vive em `src/assetmind/`, com as specs em `docs/specs/` e as decisões em `docs/adr/`.
 
-No código, os três especialistas do cartaz são passos de um `Workflow` do Agno. Quem calcula é uma função Python. Objetos `Agent` existem para uma narrativa opcional e o caminho padrão não os chama. O rótulo "Em construção" do cartaz continua válido para o parsing ao vivo da CVM e para o deploy no Render.
+No código, os três especialistas do cartaz são passos de um `Workflow` do Agno. Quem calcula é uma função Python. Objetos `Agent` existem para uma narrativa opcional e o caminho padrão não os chama. O rótulo "Em construção" do cartaz continua válido para o parsing ao vivo da CVM e para o deploy validado na OCI.
 
 ```mermaid
 flowchart LR
@@ -64,13 +64,13 @@ O pacote `domain` não importa Agno, FastAPI nem SDK de provedor. Cada fonte ext
 
 | Pilar | Onde vive | Papel |
 | --- | --- | --- |
-| Harness | `harness/` e `src/assetmind/application/` | Prazo, retry, orçamento, estado e falha parcial |
-| Skills | `skills/` | Procedimentos dos agentes financeiros em tempo de execução |
-| Context | `context/` e `application/context.py` | Só o resumo que a etapa precisa |
-| Specs | `specs/` | Contratos e critérios de aceitação |
-| Rules | `.cursor/rules/` e `rules/` | Padrões de código e regras de análise |
+| Harness | `docs/policies/` e `src/assetmind/application/` | Prazo, retry, orçamento, estado e falha parcial |
+| Skills | `agent/skills/` | Procedimentos dos agentes financeiros em tempo de execução |
+| Context | `docs/reference/` e `application/context.py` | Só o resumo que a etapa precisa |
+| Specs | `docs/specs/` | Contratos e critérios de aceitação |
+| Rules | `.cursor/rules/` e `docs/rules/` | Padrões de código e regras de análise |
 
-As skills em `.cursor/skills/` orientam o agente que escreve este repositório. As skills em `skills/` descrevem análise de ação, cripto, FII, cenário e evidência. Uma não substitui a outra.
+As skills em `.cursor/skills/` orientam o agente que escreve este repositório. As skills em `agent/skills/` descrevem análise de ação, cripto, FII, cenário e evidência. Uma não substitui a outra.
 
 ## Stack
 
@@ -85,32 +85,25 @@ As skills em `.cursor/skills/` orientam o agente que escreve este repositório. 
 | HTTP | HTTPX assíncrono |
 | Cálculo | NumPy e pandas |
 | Qualidade | pytest, Ruff e Pyright |
-| Entrega | uv, Docker, GitHub Actions e um blueprint Render |
+| Entrega | uv, Docker, GitHub Actions, Terraform OCI Always Free e blueprint Render alternativo |
 
 Redis não entra neste MVP. Um processo web dá conta do modelo de execução atual. Não há Kubernetes, fila ou um serviço por agente.
 
 ## Mapa do repositório
 
 ```text
-src/assetmind/
-  api/            HTTP, schemas e OpenAPI
-  application/    caso de uso, orçamento, estado e relatório
-  domain/         ativos, evidência, métricas e cenários
-  workflows/      workflow Agno
-  agents/         agentes opcionais, fora do caminho padrão
-  providers/      brapi, CoinGecko, Banco Central e fixture da CVM
-  persistence/    tabelas da aplicação
-  security/       API key e limite de taxa
-docs/
-  adr/            decisões de arquitetura
-  api/            contrato HTTP
-  architecture/   visão do monólito
-  assets/         banner e cartaz
-  tutorials/      primeira análise
-specs/            contratos
-skills/           procedimentos de execução
-.cursor/          regras e skills de desenvolvimento
+src/assetmind/     código da aplicação
+tests/             suíte automatizada
+migrations/        revisões Alembic
+docs/              documentação humana (specs, ADR, rules, policies, reference)
+agent/skills/      skills de execução do agente AssetMind
+infra/             Docker, OCI Terraform e blueprint Render
+ui/                Agent UI
+scripts/           utilitários de operador
+.cursor/           regras e skills do editor
 ```
+
+Índice da documentação: [docs/README.md](docs/README.md). Layout formal: [ADR 0023](docs/adr/0023-repository-layout.md).
 
 ## Como rodar
 
@@ -148,7 +141,7 @@ No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG1
 | `make logs` | Acompanha o log da API no Compose |
 | `make clean` | Remove cache local e o SQLite `assetmind.db` |
 
-`make up` publica a API em `http://localhost:8000` com o Postgres do [docker-compose.yml](docker-compose.yml). A senha `assetmind` desse arquivo vale só para desenvolvimento. `make build` só constrói a imagem. Ela ainda não significa um deploy no Render.
+`make up` publica a API em `http://localhost:8000` com o Postgres de [infra/docker/docker-compose.yml](infra/docker/docker-compose.yml). A senha `assetmind` desse arquivo vale só para desenvolvimento. `make build` só constrói a imagem. Ela ainda não significa um deploy validado.
 
 ## API
 
@@ -179,7 +172,7 @@ curl -s http://localhost:8000/api/v1/analyses \
 
 A resposta traz `analysis_id`, `correlation_id` e `status`. Os status úteis são `completed`, `partial` e `failed`. Um resultado `partial` conserva o que já foi calculado e nomeia o limite ou a lacuna. O progresso gravado sai em `GET /api/v1/analyses/{id}/events`.
 
-Símbolo inválido e ticker ambíguo respondem `422`. Chave ausente responde `401`. O limite em memória responde `429`. O contrato completo está em [specs/api-contracts.md](specs/api-contracts.md) e [docs/api/http.md](docs/api/http.md).
+Símbolo inválido e ticker ambíguo respondem `422`. Chave ausente responde `401`. O limite em memória responde `429`. O contrato completo está em [docs/specs/api-contracts.md](docs/specs/api-contracts.md) e [docs/api/http.md](docs/api/http.md).
 
 ## Configuração e custo
 
@@ -208,7 +201,7 @@ O caminho versionado faz roteamento, busca e conta em Python. O compositor copia
 | [Banco Central SGS](https://dadosabertos.bcb.gov.br) | Meta Selic, série 432 | Contexto macro para FII de papel. Não é fato do fundo. |
 | Dados abertos da CVM | Informes de FII | O informe mensal ainda não é interpretado. |
 
-Cada observação guarda provedor, URL quando existe, instante observado e instante da coleta. Número ausente continua ausente. Fechamento vencido permanece como histórico e não vira preço de referência. Detalhe em [context/data-sources.md](context/data-sources.md).
+Cada observação guarda provedor, URL quando existe, instante observado e instante da coleta. Número ausente continua ausente. Fechamento vencido permanece como histórico e não vira preço de referência. Detalhe em [docs/reference/data-sources.md](docs/reference/data-sources.md).
 
 ## Testes
 
@@ -228,7 +221,9 @@ Verificado neste workspace em 5 de novembro de 2026:
 
 ## Deploy
 
-O [Dockerfile](Dockerfile) escuta `0.0.0.0:$PORT`. O [render.yaml](render.yaml) descreve um web service e um Postgres no plano free, com health check em `/health` e AgentOS desligado. O blueprint foi escrito e ainda não foi publicado numa conta Render. Serviço free adormece após inatividade, e o Postgres free expira. Nenhum preço em dólar é afirmado aqui.
+O [Dockerfile](infra/docker/Dockerfile) escuta `0.0.0.0:$PORT`. O alvo principal é **OCI Always Free**: Terraform em [infra/oci](infra/oci) sobe uma VM Ampere A1 com Docker; [docker-compose.oci.yml](infra/docker/docker-compose.oci.yml) sobe a API e o Postgres no mesmo host, com AgentOS desligado e health check em `/health`. Autonomous Database da OCI não é usado (o produto exige PostgreSQL). O módulo Terraform foi escrito; um `apply` ao vivo ainda não é afirmado aqui.
+
+O [infra/render.yaml](infra/render.yaml) permanece como blueprint alternativo (web + Postgres free). Serviço free no Render adormece após inatividade, e o Postgres free expira. Nenhum preço em dólar é afirmado aqui.
 
 ## Estado e limites
 
@@ -240,7 +235,7 @@ Ainda em aberto:
 - Plano de controle do AgentOS. Ele só sobe com `ASSETMIND_AGENTOS_ENABLED=true` e um segredo JWT.
 - Fila durável. A análise corre dentro do request.
 - Previsão com probabilidade calibrada. Os choques padrão são -15%, 0% e +15%, marcados como premissa ilustrativa.
-- Deploy validado no Render, latência medida e custo medido de hospedagem.
+- Deploy validado na OCI Always Free (Terraform apply + compose), latência medida e custo medido de hospedagem.
 
 Volatilidade anualizada usa 252 períodos na B3 e 365 em cripto. É convenção de amostragem.
 
@@ -248,7 +243,7 @@ Volatilidade anualizada usa 252 períodos na B3 e 365 em cripto. É convenção 
 
 1. Interpretar informes de FII da CVM com carimbo de fonte.
 2. Colar `GROQ_API_KEY` e reiniciar o `make watch` para o chat passar pelo Groq.
-3. Publicar o blueprint no Render e registrar o que aconteceu.
+3. Aplicar `infra/oci` numa tenancy Always Free, subir o compose e registrar o que aconteceu.
 4. Avaliar execução durável do Agno só quando uma análise deixar de caber no request.
 
 A série de artigos acompanha essa ordem: concepção e arquitetura, decisões e infraestrutura, implementação e demonstração.

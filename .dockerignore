@@ -10,6 +10,7 @@ htmlcov
 tests
 docs
 .cursor
+infra/oci/.terraform
 **/*.md
 !README.md
-!skills/**/SKILL.md
+!agent/skills/**/SKILL.md

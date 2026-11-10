@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars (gitignored) and fill with values from the OCI Console.
+# API keys: Identity → Users → your user → API Keys.
+
+tenancy_ocid        = "ocid1.tenancy.oc1..example"
+user_ocid           = "ocid1.user.oc1..example"
+fingerprint         = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path    = "~/.oci/oci_api_key.pem"
+region              = "sa-saopaulo-1"
+compartment_ocid    = "ocid1.tenancy.oc1..example"
+
+ssh_public_key      = "ssh-ed25519 AAAA... assetmind-oci"
+ssh_allowed_cidr    = "203.0.113.10/32"
+
+# Optional overrides for Always Free Ampere budget (4 OCPU / 24 GB tenancy-wide).
+# instance_ocpus         = 2
+# instance_memory_in_gbs = 12
+# boot_volume_size_in_gbs = 50
+# app_port               = 8000
+# availability_domain_number = 1

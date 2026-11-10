@@ -5,8 +5,8 @@ description: Reviews timeouts, retries, circuit breakers, partial results, and t
 
 # Reliability review
 
-1. Read `harness/execution-policy.md`.
-2. Confirm retries are bounded and only used for idempotent GET calls.
-3. Confirm a budget or deadline ends in `partial` or `failed`, not a silent success.
-4. Add a test for the failure you touched: timeout, 429, conflict, stale price, or budget.
-5. Report the commands you ran.
+1. Read `docs/policies/execution-policy.md`.
+2. Confirm deadline, retry, and partial-result behavior stay in application code.
+3. Do not add a queue unless an ADR records the requirement.
+4. Keep provider retries idempotent and bounded.
+5. Add a test for the failure mode you changed.

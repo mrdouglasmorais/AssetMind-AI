@@ -8,6 +8,6 @@ The MVP is acceptable for the article series when:
 - the Agno workflow is the path the API uses
 - source names are present on evidence
 - ambiguous tickers, stale prices, conflicts, and budget limits fail explicitly
-- the README does not claim an unverified Render deploy
+- the README does not claim an unverified OCI or Render deploy
 
 A live brapi, CoinGecko, or Banco Central call is additional evidence. It is not required for the offline suite.

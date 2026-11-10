@@ -72,7 +72,10 @@ class Settings(BaseSettings):
         default="https://api.bcb.gov.br",
         validation_alias=AliasChoices("ASSETMIND_BCB_BASE_URL"),
     )
-    skills_dir: str = Field(default="skills", validation_alias=AliasChoices("ASSETMIND_SKILLS_DIR"))
+    skills_dir: str = Field(
+        default="agent/skills",
+        validation_alias=AliasChoices("ASSETMIND_SKILLS_DIR"),
+    )
     token_allowance: int = Field(default=100_000, validation_alias="ASSETMIND_TOKEN_ALLOWANCE")
     max_total_tokens: int = Field(default=4000, validation_alias="ASSETMIND_MAX_TOTAL_TOKENS")
     max_output_tokens: int = Field(default=1200, validation_alias="ASSETMIND_MAX_OUTPUT_TOKENS")

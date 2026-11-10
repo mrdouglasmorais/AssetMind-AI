@@ -4,6 +4,8 @@ HOST ?= 0.0.0.0
 PORT ?= 8000
 IMAGE ?= assetmind-ai:local
 COMPOSE ?= docker compose
+COMPOSE_FILE ?= infra/docker/docker-compose.yml
+DOCKERFILE ?= infra/docker/Dockerfile
 
 .PHONY: help init install ui-install watch run build up down logs test lint format typecheck migrate secrets check clean
 
@@ -59,16 +61,16 @@ run:
 	PYTHONPATH=src uv run uvicorn assetmind.main:app --host $(HOST) --port $(PORT)
 
 build:
-	docker build -t $(IMAGE) .
+	docker build -f $(DOCKERFILE) -t $(IMAGE) .
 
 up:
-	$(COMPOSE) up --build
+	$(COMPOSE) -f $(COMPOSE_FILE) --project-directory . up --build
 
 down:
-	$(COMPOSE) down
+	$(COMPOSE) -f $(COMPOSE_FILE) --project-directory . down
 
 logs:
-	$(COMPOSE) logs -f api
+	$(COMPOSE) -f $(COMPOSE_FILE) --project-directory . logs -f api
 
 test:
 	uv run pytest

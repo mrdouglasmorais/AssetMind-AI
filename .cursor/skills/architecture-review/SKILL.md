@@ -5,8 +5,9 @@ description: Reviews AssetMind changes against modular-monolith boundaries, ADRs
 
 # Architecture review
 
-1. Read `specs/product.md` and `docs/adr/`.
+1. Read `docs/specs/product.md` and `docs/adr/`.
 2. Confirm `domain` does not import Agno, FastAPI, or a vendor SDK.
 3. Reject a new service, queue, or database unless an ADR records the requirement.
 4. Check that the README status matches the code.
-5. Report the files reviewed and any decision that still needs an ADR.
+5. Confirm layout still matches ADR 0023 (`src/`, `docs/`, `infra/`, `agent/skills/`).
+6. Report the files reviewed and any decision that still needs an ADR.
