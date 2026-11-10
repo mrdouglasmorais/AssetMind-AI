@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -63,3 +63,21 @@ class EvidenceRow(Base):
     currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
     period: Mapped[str | None] = mapped_column(String(64), nullable=True)
     quality_status: Mapped[str] = mapped_column(String(32))
+
+
+class AnalysisJobRow(Base):
+    """Durable work item claimed by workers (ADR 0024)."""
+
+    __tablename__ = "analysis_jobs"
+
+    analysis_id: Mapped[str] = mapped_column(ForeignKey("analyses.id"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

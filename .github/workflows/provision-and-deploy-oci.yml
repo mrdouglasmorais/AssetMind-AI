@@ -1,0 +1,163 @@
+name: provision-and-deploy-oci
+
+# Tries Always Free Ampere capacity. If OCI has no host, exits green without deploying.
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      deploy_if_ready:
+        description: "If VM is up, also sync app and restart compose"
+        type: boolean
+        default: true
+      image_tag:
+        description: "GHCR tag to deploy (empty = build on host via compose)"
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: provision-and-deploy-oci
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    outputs:
+      provisioned: ${{ steps.try.outputs.provisioned }}
+      public_ip: ${{ steps.try.outputs.public_ip }}
+      instance_id: ${{ steps.try.outputs.instance_id }}
+      skip_reason: ${{ steps.try.outputs.skip_reason }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install OCI SDK
+        run: pip install --quiet "oci>=2.140.0"
+
+      - name: Try provision (soft-skip on no capacity)
+        id: try
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_REGION: ${{ vars.OCI_REGION }}
+          OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+          OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
+          OCI_AVAILABILITY_DOMAIN: ${{ secrets.OCI_AVAILABILITY_DOMAIN }}
+          OCI_IMAGE_OCID: ${{ secrets.OCI_IMAGE_OCID }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+          OCI_INSTANCE_OCPUS: ${{ vars.OCI_INSTANCE_OCPUS }}
+          OCI_INSTANCE_MEMORY_GBS: ${{ vars.OCI_INSTANCE_MEMORY_GBS }}
+        run: |
+          set -euo pipefail
+          export OCI_REGION="${OCI_REGION:-sa-saopaulo-1}"
+          export OCI_INSTANCE_OCPUS="${OCI_INSTANCE_OCPUS:-1}"
+          export OCI_INSTANCE_MEMORY_GBS="${OCI_INSTANCE_MEMORY_GBS:-6}"
+          for name in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_PRIVATE_KEY \
+            OCI_SUBNET_OCID OCI_AVAILABILITY_DOMAIN OCI_IMAGE_OCID OCI_SSH_PUBLIC_KEY; do
+            test -n "${!name}" || { echo "missing secret/env $name"; exit 1; }
+          done
+          python infra/oci/scripts/ci_try_provision.py
+
+      - name: Summarize
+        run: |
+          echo "provisioned=${{ steps.try.outputs.provisioned }}"
+          echo "skip_reason=${{ steps.try.outputs.skip_reason }}"
+          echo "public_ip=${{ steps.try.outputs.public_ip }}"
+          echo "instance_id=${{ steps.try.outputs.instance_id }}"
+
+  deploy:
+    needs: provision
+    if: >-
+      needs.provision.outputs.provisioned == 'true' &&
+      (github.event_name == 'schedule' || github.event.inputs.deploy_if_ready != 'false')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require deploy secrets
+        env:
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          OCI_ENV_FILE: ${{ secrets.OCI_ENV_FILE }}
+          PUBLIC_IP: ${{ needs.provision.outputs.public_ip }}
+        run: |
+          test -n "$OCI_SSH_PRIVATE_KEY"
+          test -n "$OCI_ENV_FILE"
+          test -n "$PUBLIC_IP"
+
+      - name: Prepare SSH
+        env:
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          PUBLIC_IP: ${{ needs.provision.outputs.public_ip }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci_deploy
+          chmod 600 ~/.ssh/oci_deploy
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            ssh-keyscan -H "$PUBLIC_IP" >> ~/.ssh/known_hosts 2>/dev/null && break
+            sleep 20
+          done
+
+      - name: Wait for SSH + cloud-init
+        env:
+          PUBLIC_IP: ${{ needs.provision.outputs.public_ip }}
+          USER: ${{ secrets.OCI_SSH_USER }}
+        run: |
+          USER="${USER:-ubuntu}"
+          for i in $(seq 1 30); do
+            if ssh -i ~/.ssh/oci_deploy -o ConnectTimeout=10 "$USER@$PUBLIC_IP" 'cloud-init status --wait || true; command -v docker'; then
+              exit 0
+            fi
+            echo "waiting for ssh/docker ($i/30)"
+            sleep 20
+          done
+          echo "SSH/docker not ready in time" >&2
+          exit 1
+
+      - name: Sync repo and env, deploy compose
+        env:
+          PUBLIC_IP: ${{ needs.provision.outputs.public_ip }}
+          USER: ${{ secrets.OCI_SSH_USER }}
+          REMOTE: ${{ secrets.OCI_DEPLOY_PATH }}
+          OCI_ENV_FILE: ${{ secrets.OCI_ENV_FILE }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          REMOTE="${REMOTE:-/opt/assetmind}"
+          USER="${USER:-ubuntu}"
+          ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "sudo mkdir -p '$REMOTE' && sudo chown '$USER:$USER' '$REMOTE'"
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/oci_deploy" \
+            --exclude '.git/' \
+            --exclude '.venv/' \
+            --exclude 'node_modules/' \
+            --exclude '.terraform/' \
+            --exclude '*.tfstate*' \
+            --exclude 'infra/oci/.env' \
+            ./ "$USER@$PUBLIC_IP:$REMOTE/"
+          printf '%s\n' "$OCI_ENV_FILE" | ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "cat > '$REMOTE/infra/oci/.env'"
+          ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "chmod 600 '$REMOTE/infra/oci/.env'"
+          if [[ -n "${IMAGE_TAG:-}" ]]; then
+            IMAGE="ghcr.io/${REPO}:${IMAGE_TAG}"
+            ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "bash -s" <<EOF
+          set -euo pipefail
+          cd '$REMOTE'
+          grep -q '^ASSETMIND_IMAGE=' infra/oci/.env && sed -i.bak "s|^ASSETMIND_IMAGE=.*|ASSETMIND_IMAGE=$IMAGE|" infra/oci/.env || echo "ASSETMIND_IMAGE=$IMAGE" >> infra/oci/.env
+          docker pull '$IMAGE' || true
+          EOF
+          fi
+          ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "bash -s" <<EOF
+          set -euo pipefail
+          cd '$REMOTE'
+          chmod +x infra/oci/scripts/*.sh infra/docker/entrypoint.sh
+          ./infra/oci/scripts/deploy.sh
+          EOF

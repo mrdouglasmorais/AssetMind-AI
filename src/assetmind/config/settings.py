@@ -88,6 +88,15 @@ class Settings(BaseSettings):
     max_provider_retries: int = Field(default=2, validation_alias="ASSETMIND_MAX_PROVIDER_RETRIES")
     rate_limit_per_minute: int = Field(default=30, validation_alias="ASSETMIND_RATE_LIMIT_PER_MINUTE")
     max_assets: int = Field(default=5, validation_alias="ASSETMIND_MAX_ASSETS")
+    job_queue_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ASSETMIND_JOB_QUEUE_ENABLED"),
+    )
+    worker_concurrency: int = Field(default=1, validation_alias="ASSETMIND_WORKER_CONCURRENCY")
+    worker_poll_seconds: float = Field(default=5, validation_alias="ASSETMIND_WORKER_POLL_SECONDS")
+    worker_lease_seconds: float = Field(default=60, validation_alias="ASSETMIND_WORKER_LEASE_SECONDS")
+    job_max_attempts: int = Field(default=3, validation_alias="ASSETMIND_JOB_MAX_ATTEMPTS")
+
     input_cost_per_million: float = Field(default=0.15, validation_alias="ASSETMIND_INPUT_COST_PER_MILLION")
     output_cost_per_million: float = Field(
         default=0.60,

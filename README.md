@@ -243,7 +243,7 @@ Volatilidade anualizada usa 252 períodos na B3 e 365 em cripto. É convenção 
 
 1. Interpretar informes de FII da CVM com carimbo de fonte.
 2. Colar `GROQ_API_KEY` e reiniciar o `make watch` para o chat passar pelo Groq.
-3. Aplicar `infra/oci` numa tenancy Always Free, subir o compose e registrar o que aconteceu.
+3. Seguir [docs/architecture/oci-credentials.md](docs/architecture/oci-credentials.md), aplicar Terraform na tenancy Always Free, configurar secrets no GitHub e registrar o primeiro deploy.
 4. Avaliar execução durável do Agno só quando uma análise deixar de caber no request.
 
 A série de artigos acompanha essa ordem: concepção e arquitetura, decisões e infraestrutura, implementação e demonstração.

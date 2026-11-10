@@ -55,13 +55,27 @@ Migrations run once via Compose profile `migrate`. The API image does **not** mi
 CONFIRM=yes ./infra/oci/scripts/restore.sh /var/backups/assetmind/assetmind-….sql.gz
 ```
 
+## Credentials
+
+Step-by-step OCI API key + GitHub secrets: [oci-credentials.md](oci-credentials.md).
+
+## Out of host capacity (Ampere A1)
+
+Always Free `VM.Standard.A1.Flex` in the home region often returns `Out of host capacity`. Networking (VCN/subnet) can remain; only the instance is missing.
+
+Preferred path: GitHub Actions workflow **`provision-and-deploy-oci`** tries every 2 hours. If there is no capacity it **exits green** (no deploy). If the VM appears it deploys compose. See [oci-credentials.md](oci-credentials.md).
+
+Local fallback: `infra/oci/scripts/retry-instance.sh` (only while Terraform still has `enable_compute = true`).
+
+Ampere Always Free is limited to the **home region**. Switching region for free A1 is not a general workaround.
+
 ## Phase status
 
 | Phase | Status |
 | --- | --- |
 | 1 Audit | Done — `oci-audit.md` |
-| 2 Docker ARM64 + Compose prod | Done — this tree |
-| 3 Durable worker / job lease | Pending |
-| 4 Terraform quota-aware apply | Authored; apply requires operator |
-| 5 CI/CD deploy-oci | Pending |
-| 6 Restart / load validation on live VM | Pending authorization |
+| 2 Docker ARM64 + Compose prod | Done |
+| 3 Durable worker / job lease | Done — `analysis_jobs`, ADR 0024 |
+| 4 Terraform | Authored; `apply` requires operator |
+| 5 CI/CD | `ci.yml` ARM64 publish + `deploy-oci.yml` (manual) |
+| 6 Live VM validation | Pending your `terraform apply` + first deploy |

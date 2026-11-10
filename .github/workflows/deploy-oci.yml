@@ -1,0 +1,108 @@
+name: deploy-oci
+
+# Manual only. Requires repository secrets documented in docs/architecture/oci-credentials.md.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Immutable image tag already in GHCR (e.g. sha-<gitsha>)"
+        required: true
+        type: string
+      confirm:
+        description: "Type deploy to confirm production update"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-oci
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'deploy'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require deploy secrets
+        env:
+          OCI_SSH_HOST: ${{ secrets.OCI_SSH_HOST }}
+          OCI_SSH_USER: ${{ secrets.OCI_SSH_USER }}
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+          OCI_ENV_FILE: ${{ secrets.OCI_ENV_FILE }}
+        run: |
+          test -n "$OCI_SSH_HOST"
+          test -n "$OCI_SSH_USER"
+          test -n "$OCI_SSH_PRIVATE_KEY"
+          test -n "$OCI_ENV_FILE"
+
+      - name: Prepare SSH
+        env:
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci_deploy
+          chmod 600 ~/.ssh/oci_deploy
+          ssh-keyscan -H "${{ secrets.OCI_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync repository and env
+        env:
+          HOST: ${{ secrets.OCI_SSH_HOST }}
+          USER: ${{ secrets.OCI_SSH_USER }}
+          REMOTE: ${{ secrets.OCI_DEPLOY_PATH }}
+          OCI_ENV_FILE: ${{ secrets.OCI_ENV_FILE }}
+        run: |
+          REMOTE="${REMOTE:-/opt/assetmind}"
+          ssh -i ~/.ssh/oci_deploy "$USER@$HOST" "sudo mkdir -p '$REMOTE' && sudo chown '$USER:$USER' '$REMOTE'"
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/oci_deploy" \
+            --exclude '.git/' \
+            --exclude '.venv/' \
+            --exclude 'node_modules/' \
+            --exclude '.terraform/' \
+            --exclude '*.tfstate*' \
+            --exclude 'infra/oci/.env' \
+            ./ "$USER@$HOST:$REMOTE/"
+          printf '%s\n' "$OCI_ENV_FILE" | ssh -i ~/.ssh/oci_deploy "$USER@$HOST" "cat > '$REMOTE/infra/oci/.env'"
+          ssh -i ~/.ssh/oci_deploy "$USER@$HOST" "chmod 600 '$REMOTE/infra/oci/.env'"
+
+      - name: Pull image, migrate once, restart stack
+        env:
+          HOST: ${{ secrets.OCI_SSH_HOST }}
+          USER: ${{ secrets.OCI_SSH_USER }}
+          REMOTE: ${{ secrets.OCI_DEPLOY_PATH }}
+          IMAGE: ghcr.io/${{ github.repository }}:${{ github.event.inputs.image_tag }}
+        run: |
+          REMOTE="${REMOTE:-/opt/assetmind}"
+          ssh -i ~/.ssh/oci_deploy "$USER@$HOST" "bash -s" <<EOF
+          set -euo pipefail
+          cd '$REMOTE'
+          grep -q '^ASSETMIND_IMAGE=' infra/oci/.env && sed -i.bak "s|^ASSETMIND_IMAGE=.*|ASSETMIND_IMAGE=$IMAGE|" infra/oci/.env || echo "ASSETMIND_IMAGE=$IMAGE" >> infra/oci/.env
+          docker pull '$IMAGE'
+          chmod +x infra/oci/scripts/*.sh infra/docker/entrypoint.sh
+          docker compose -f infra/oci/docker-compose.prod.yml --env-file infra/oci/.env --project-directory . --profile migrate run --rm migrate
+          docker compose -f infra/oci/docker-compose.prod.yml --env-file infra/oci/.env --project-directory . up -d --remove-orphans
+          ./infra/oci/scripts/healthcheck.sh
+          EOF
+
+      - name: Smoke analysis enqueue
+        env:
+          HOST: ${{ secrets.OCI_SSH_HOST }}
+          USER: ${{ secrets.OCI_SSH_USER }}
+          REMOTE: ${{ secrets.OCI_DEPLOY_PATH }}
+        run: |
+          REMOTE="${REMOTE:-/opt/assetmind}"
+          ssh -i ~/.ssh/oci_deploy "$USER@$HOST" "bash -s" <<EOF
+          set -euo pipefail
+          cd '$REMOTE'
+          set -a
+          # shellcheck disable=SC1091
+          source infra/oci/.env
+          set +a
+          curl -fsS -H "X-API-Key: \$ASSETMIND_API_KEY" -H "Content-Type: application/json" \
+            -d '{"assets":[{"symbol":"PETR4"}]}' \
+            http://127.0.0.1/api/v1/analyses | tee /tmp/smoke.json
+          EOF

@@ -33,13 +33,22 @@ class AnalysisRepository:
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
 
-    def create(self, *, analysis_id: str, correlation_id: str, request_json: str, now: datetime) -> None:
+    def create(
+        self,
+        *,
+        analysis_id: str,
+        correlation_id: str,
+        request_json: str,
+        now: datetime,
+        status: str = "created",
+        message: str = "Analysis created.",
+    ) -> None:
         with self._session_factory() as session:
             session.add(
                 AnalysisRow(
                     id=analysis_id,
                     correlation_id=correlation_id,
-                    status="created",
+                    status=status,
                     request_json=request_json,
                     report_json=None,
                     error_code=None,
@@ -50,8 +59,8 @@ class AnalysisRepository:
             session.add(
                 AnalysisEventRow(
                     analysis_id=analysis_id,
-                    state="created",
-                    message="Analysis created.",
+                    state=status,
+                    message=message,
                     created_at=now,
                 )
             )

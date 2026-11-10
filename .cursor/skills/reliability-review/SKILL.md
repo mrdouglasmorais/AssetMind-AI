@@ -7,6 +7,6 @@ description: Reviews timeouts, retries, circuit breakers, partial results, and t
 
 1. Read `docs/policies/execution-policy.md`.
 2. Confirm deadline, retry, and partial-result behavior stay in application code.
-3. Do not add a queue unless an ADR records the requirement.
+3. Durable jobs follow ADR 0024 (`analysis_jobs` + worker lease). Do not add Redis unless a new ADR requires it.
 4. Keep provider retries idempotent and bounded.
 5. Add a test for the failure mode you changed.

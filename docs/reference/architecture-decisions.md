@@ -11,7 +11,7 @@ Accepted decisions are in `docs/adr`. The short version:
 - Context sent to a model is a metric summary.
 - Evidence keeps provenance and is validated before presentation.
 - OCI Always Free (Ampere A1 + Caddy/API/worker/Postgres) is the target host via Terraform. Render remains an alternate blueprint. A live OCI apply is still pending.
-- Durable worker queue is accepted (ADR 0024); Phase 2 ships an idle worker until claim/lease lands.
+- Durable worker queue is accepted (ADR 0024): PostgreSQL leases, fencing tokens, OCI enables the queue by default.
 - Repository layout groups code (`src/`), docs (`docs/`), deploy (`infra/`), and runtime skills (`agent/skills/`) — ADR 0023.
 - Chat sessions are chunked and embedded. A filing corpus and pgvector stay deferred.
 - Horizon returns stay empty until the series covers them. The coverage score is not a buy grade.

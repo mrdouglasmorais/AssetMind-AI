@@ -15,6 +15,7 @@ from assetmind.application.service import AnalysisService
 from assetmind.config.settings import Settings
 from assetmind.observability.logging import configure_logging
 from assetmind.persistence.db import create_db_engine, create_schema, create_session_factory, ping
+from assetmind.persistence.jobs import JobRepository
 from assetmind.persistence.repository import AnalysisRepository
 from assetmind.providers.bcb import BancoCentralProvider
 from assetmind.providers.brapi import BrapiProvider
@@ -38,7 +39,9 @@ def create_app(
     logger = configure_logging()
     engine = create_db_engine(runtime.database_url)
     create_schema(engine)
-    repository = AnalysisRepository(create_session_factory(engine))
+    session_factory = create_session_factory(engine)
+    repository = AnalysisRepository(session_factory)
+    jobs = JobRepository(session_factory)
     client = http_client or httpx.AsyncClient()
 
     def registry_factory(budget: BudgetManager) -> ProviderRegistry:
@@ -79,7 +82,15 @@ def create_app(
     def budget_factory(asset_count: int) -> BudgetManager:
         return BudgetManager(runtime.budget_limits()).scaled_for_assets(asset_count)
 
-    service = AnalysisService(repository, registry_factory, logger, budget_factory)
+    service = AnalysisService(
+        repository,
+        registry_factory,
+        logger,
+        budget_factory,
+        jobs=jobs,
+        job_queue_enabled=runtime.job_queue_enabled,
+        job_max_attempts=runtime.job_max_attempts,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
