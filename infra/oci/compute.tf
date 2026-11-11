@@ -1,3 +1,7 @@
+locals {
+  is_flex_shape = strcontains(var.shape, ".Flex")
+}
+
 resource "oci_core_instance" "api" {
   count = var.enable_compute ? 1 : 0
 
@@ -8,9 +12,12 @@ resource "oci_core_instance" "api" {
   fault_domain        = var.fault_domain != "" ? var.fault_domain : null
   freeform_tags       = local.common_tags
 
-  shape_config {
-    ocpus         = var.instance_ocpus
-    memory_in_gbs = var.instance_memory_in_gbs
+  dynamic "shape_config" {
+    for_each = local.is_flex_shape ? [1] : []
+    content {
+      ocpus         = var.instance_ocpus
+      memory_in_gbs = var.instance_memory_in_gbs
+    }
   }
 
   create_vnic_details {

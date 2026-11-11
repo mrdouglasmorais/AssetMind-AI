@@ -59,15 +59,15 @@ CONFIRM=yes ./infra/oci/scripts/restore.sh /var/backups/assetmind/assetmind-….
 
 Step-by-step OCI API key + GitHub secrets: [oci-credentials.md](oci-credentials.md).
 
-## Out of host capacity (Ampere A1)
+## Out of host capacity
 
 Always Free `VM.Standard.A1.Flex` in the home region often returns `Out of host capacity`. Networking (VCN/subnet) can remain; only the instance is missing.
 
-Preferred path: GitHub Actions workflow **`provision-and-deploy-oci`** tries every 2 hours. If there is no capacity it **exits green** (no deploy). If the VM appears it deploys compose. See [oci-credentials.md](oci-credentials.md).
+Preferred path: GitHub Actions workflow **`provision-and-deploy-oci`** tries **E2.1.Micro** first, then **A1.Flex**, every 2 hours. Soft-skip (green, no deploy) only when both fail. Micro deploys the reduced stack (`docker-compose.micro.yml`). See [oci-credentials.md](oci-credentials.md).
 
 Local fallback: `infra/oci/scripts/retry-instance.sh` (only while Terraform still has `enable_compute = true`).
 
-Ampere Always Free is limited to the **home region**. Switching region for free A1 is not a general workaround.
+Ampere Always Free is limited to the **home region**. E2.1.Micro is the Always Free x86 interim path when Ampere is unavailable.
 
 ## Phase status
 

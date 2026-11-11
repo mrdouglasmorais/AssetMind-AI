@@ -1,6 +1,6 @@
 name: provision-and-deploy-oci
 
-# Tries Always Free Ampere capacity. If OCI has no host, exits green without deploying.
+# Tries Always Free E2.1.Micro first, then Ampere A1. Soft-skips when both lack capacity.
 on:
   schedule:
     - cron: "17 */2 * * *"
@@ -31,6 +31,8 @@ jobs:
       public_ip: ${{ steps.try.outputs.public_ip }}
       instance_id: ${{ steps.try.outputs.instance_id }}
       skip_reason: ${{ steps.try.outputs.skip_reason }}
+      shape: ${{ steps.try.outputs.shape }}
+      compose_profile: ${{ steps.try.outputs.compose_profile }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +43,7 @@ jobs:
       - name: Install OCI SDK
         run: pip install --quiet "oci>=2.140.0"
 
-      - name: Try provision (soft-skip on no capacity)
+      - name: Try provision (Micro then A1; soft-skip on no capacity)
         id: try
         env:
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
@@ -52,17 +54,22 @@ jobs:
           OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
           OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
           OCI_AVAILABILITY_DOMAIN: ${{ secrets.OCI_AVAILABILITY_DOMAIN }}
+          OCI_AVAILABILITY_DOMAINS: ${{ vars.OCI_AVAILABILITY_DOMAINS }}
           OCI_IMAGE_OCID: ${{ secrets.OCI_IMAGE_OCID }}
           OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+          OCI_INSTANCE_SHAPE: ${{ vars.OCI_INSTANCE_SHAPE }}
           OCI_INSTANCE_OCPUS: ${{ vars.OCI_INSTANCE_OCPUS }}
           OCI_INSTANCE_MEMORY_GBS: ${{ vars.OCI_INSTANCE_MEMORY_GBS }}
+          OCI_TRY_A1_FALLBACK: ${{ vars.OCI_TRY_A1_FALLBACK }}
         run: |
           set -euo pipefail
           export OCI_REGION="${OCI_REGION:-sa-saopaulo-1}"
+          export OCI_INSTANCE_SHAPE="${OCI_INSTANCE_SHAPE:-VM.Standard.E2.1.Micro}"
           export OCI_INSTANCE_OCPUS="${OCI_INSTANCE_OCPUS:-1}"
           export OCI_INSTANCE_MEMORY_GBS="${OCI_INSTANCE_MEMORY_GBS:-6}"
+          export OCI_TRY_A1_FALLBACK="${OCI_TRY_A1_FALLBACK:-true}"
           for name in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_PRIVATE_KEY \
-            OCI_SUBNET_OCID OCI_AVAILABILITY_DOMAIN OCI_IMAGE_OCID OCI_SSH_PUBLIC_KEY; do
+            OCI_SUBNET_OCID OCI_AVAILABILITY_DOMAIN OCI_SSH_PUBLIC_KEY; do
             test -n "${!name}" || { echo "missing secret/env $name"; exit 1; }
           done
           python infra/oci/scripts/ci_try_provision.py
@@ -73,6 +80,8 @@ jobs:
           echo "skip_reason=${{ steps.try.outputs.skip_reason }}"
           echo "public_ip=${{ steps.try.outputs.public_ip }}"
           echo "instance_id=${{ steps.try.outputs.instance_id }}"
+          echo "shape=${{ steps.try.outputs.shape }}"
+          echo "compose_profile=${{ steps.try.outputs.compose_profile }}"
 
   deploy:
     needs: provision
@@ -130,10 +139,12 @@ jobs:
           OCI_ENV_FILE: ${{ secrets.OCI_ENV_FILE }}
           IMAGE_TAG: ${{ github.event.inputs.image_tag }}
           REPO: ${{ github.repository }}
+          COMPOSE_PROFILE: ${{ needs.provision.outputs.compose_profile }}
         run: |
           set -euo pipefail
           REMOTE="${REMOTE:-/opt/assetmind}"
           USER="${USER:-ubuntu}"
+          PROFILE="${COMPOSE_PROFILE:-full}"
           ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "sudo mkdir -p '$REMOTE' && sudo chown '$USER:$USER' '$REMOTE'"
           rsync -az --delete \
             -e "ssh -i ~/.ssh/oci_deploy" \
@@ -146,7 +157,7 @@ jobs:
             ./ "$USER@$PUBLIC_IP:$REMOTE/"
           printf '%s\n' "$OCI_ENV_FILE" | ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "cat > '$REMOTE/infra/oci/.env'"
           ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "chmod 600 '$REMOTE/infra/oci/.env'"
-          if [[ -n "${IMAGE_TAG:-}" ]]; then
+          if [[ -n "${IMAGE_TAG:-}" && "$PROFILE" != "micro" ]]; then
             IMAGE="ghcr.io/${REPO}:${IMAGE_TAG}"
             ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "bash -s" <<EOF
           set -euo pipefail
@@ -155,9 +166,11 @@ jobs:
           docker pull '$IMAGE' || true
           EOF
           fi
+          # Micro is amd64 — always build on the host so we never pull arm64-only tags.
           ssh -i ~/.ssh/oci_deploy "$USER@$PUBLIC_IP" "bash -s" <<EOF
           set -euo pipefail
           cd '$REMOTE'
           chmod +x infra/oci/scripts/*.sh infra/docker/entrypoint.sh
+          export COMPOSE_PROFILE='$PROFILE'
           ./infra/oci/scripts/deploy.sh
           EOF

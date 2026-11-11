@@ -11,10 +11,13 @@ compartment_ocid    = "ocid1.tenancy.oc1..example"
 ssh_public_key      = "ssh-ed25519 AAAA... assetmind-oci"
 ssh_allowed_cidr    = "203.0.113.10/32"
 
-# Optional overrides. Confirm remaining Always Free Ampere capacity first.
-# instance_ocpus         = 1
-# instance_memory_in_gbs = 6
-# boot_volume_size_in_gbs = 50
+# Optional overrides.
+# Pipeline prefers VM.Standard.E2.1.Micro (x86 Always Free), then A1.Flex.
+# shape                  = "VM.Standard.E2.1.Micro"
+# shape                  = "VM.Standard.A1.Flex"
+# instance_ocpus         = 1   # Flex shapes only
+# instance_memory_in_gbs = 6   # Flex shapes only
+# boot_volume_size_in_gbs = 47
 # availability_domain_number = 1
 # When GitHub Actions owns the VM:
 # enable_compute = false

@@ -75,16 +75,22 @@ OCI_IMAGE_OCID=ocid1.image.oc1.sa-saopaulo-1.aaaaaaaagx3wh2vaw7hpzohtk5t4v3owd6a
 | Variable | Default |
 | --- | --- |
 | `OCI_REGION` | `sa-saopaulo-1` |
-| `OCI_INSTANCE_OCPUS` | `1` |
-| `OCI_INSTANCE_MEMORY_GBS` | `6` |
+| `OCI_INSTANCE_SHAPE` | `VM.Standard.E2.1.Micro` |
+| `OCI_TRY_A1_FALLBACK` | `true` |
+| `OCI_INSTANCE_OCPUS` | `1` (A1 Flex only) |
+| `OCI_INSTANCE_MEMORY_GBS` | `6` (A1 Flex only) |
+| `OCI_AVAILABILITY_DOMAINS` | empty → use `OCI_AVAILABILITY_DOMAIN` only |
+
+`OCI_IMAGE_OCID` remains useful as an A1 fallback. The provision script resolves Ubuntu images per shape via the OCI API (amd64 for Micro, arm64 for A1).
 
 ## 5. Pipeline behaviour
 
 Workflow: `.github/workflows/provision-and-deploy-oci.yml`
 
-1. **Every 2 hours** (and manual dispatch): try to launch Ampere A1 into the existing subnet.
-2. If OCI returns **Out of host capacity** → job succeeds with `provisioned=false` (no deploy).
-3. If the VM is created or already running → optionally **deploy** compose via SSH.
+1. **Every 2 hours** (and manual dispatch): try **E2.1.Micro** first, then **A1.Flex** if still no capacity.
+2. Soft-skip (`provisioned=false`) only when **both** shapes return Out of host capacity.
+3. If the VM is created or already running → deploy Compose via SSH.
+4. Micro deploy uses `COMPOSE_PROFILE=micro` (prod + `docker-compose.micro.yml`, no worker, build amd64 on host). A1 uses `full`.
 
 Manual run: Actions → **provision-and-deploy-oci** → Run workflow.
 
@@ -94,11 +100,12 @@ Manual run: Actions → **provision-and-deploy-oci** → Run workflow.
 2. Set `enable_compute = false` in `terraform.tfvars` and `terraform apply`.
 3. Add the GitHub secrets above (including `OCI_PRIVATE_KEY` and network OCIDs).
 4. Prepare `OCI_ENV_FILE` from a filled `infra/oci/.env`.
-5. Run **provision-and-deploy-oci** manually once to verify wiring.
-6. Leave the schedule on; it will deploy when capacity appears.
+5. Run **provision-and-deploy-oci** manually once to verify Micro/A1 wiring.
+6. Leave the schedule on; it will deploy when either Always Free shape appears.
 
 ## 7. Always Free reminders
 
-- Ampere Always Free is **home-region only** — other regions are not a free workaround.
-- Capacity is not guaranteed; soft-skip is intentional.
+- Ampere Always Free is **home-region only** — other regions are not a free Ampere workaround.
+- E2.1.Micro is Always Free x86 (~1 GB). Expect swap and a reduced stack; OOM risk under load.
+- Capacity is not guaranteed; soft-skip after both shapes fail is intentional.
 - Same-disk Postgres backups are not disaster recovery.

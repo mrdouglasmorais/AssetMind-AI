@@ -38,6 +38,14 @@ write_files:
       Health: curl -fsS http://127.0.0.1/health
 
 runcmd:
+  - |
+    if [ ! -f /swapfile ]; then
+      fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+      chmod 600 /swapfile
+      mkswap /swapfile
+    fi
+  - swapon /swapfile || true
+  - grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
   - install -m 0755 -d /etc/apt/keyrings
   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   - chmod a+r /etc/apt/keyrings/docker.asc
@@ -52,4 +60,4 @@ runcmd:
   - chown ubuntu:ubuntu /opt/assetmind
   - chmod 0755 /opt/assetmind
 
-final_message: "AssetMind host bootstrap finished. Docker is installed; deploy compose under /opt/assetmind."
+final_message: "AssetMind host bootstrap finished. Swap and Docker are ready; deploy compose under /opt/assetmind."

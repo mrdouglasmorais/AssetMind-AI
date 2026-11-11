@@ -1,0 +1,54 @@
+# Override for Always Free E2.1.Micro (~1 GB RAM).
+# Use with the prod base file:
+#   docker compose -f infra/oci/docker-compose.prod.yml -f infra/oci/docker-compose.micro.yml \
+#     --env-file infra/oci/.env --project-directory . up -d
+#
+# No worker. Analyses run inline (ASSETMIND_JOB_QUEUE_ENABLED=false).
+# Build/pull linux/amd64 images on this host.
+
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=20
+      - -c
+      - wal_buffers=2MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=1000
+    mem_limit: 256m
+    cpus: 0.25
+
+  migrate:
+    mem_limit: 256m
+    cpus: 0.15
+    environment:
+      ASSETMIND_JOB_QUEUE_ENABLED: "false"
+
+  api:
+    mem_limit: 384m
+    cpus: 0.35
+    environment:
+      ASSETMIND_JOB_QUEUE_ENABLED: "false"
+      PORT: "8000"
+      ASSETMIND_ROLE: api
+
+  # Keep worker out of the default Micro stack (opt-in only).
+  worker:
+    profiles: ["worker"]
+
+  proxy:
+    mem_limit: 64m
+    cpus: 0.10

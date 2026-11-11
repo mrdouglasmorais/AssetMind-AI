@@ -76,7 +76,7 @@ variable "instance_display_name" {
 
 variable "shape" {
   type        = string
-  description = "Always Free Ampere shape."
+  description = "Compute shape. Pipeline default is VM.Standard.E2.1.Micro; A1.Flex when Ampere capacity exists."
   default     = "VM.Standard.A1.Flex"
 }
 
@@ -106,7 +106,7 @@ variable "assign_public_ip" {
 
 variable "ubuntu_version" {
   type        = string
-  description = "Canonical Ubuntu version for the ARM image lookup."
+  description = "Canonical Ubuntu version for the image lookup (amd64 for E2 Micro, arm64 for A1)."
   default     = "22.04"
 }
 

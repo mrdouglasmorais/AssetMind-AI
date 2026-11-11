@@ -10,7 +10,7 @@ Accepted decisions are in `docs/adr`. The short version:
 - Calculations are deterministic.
 - Context sent to a model is a metric summary.
 - Evidence keeps provenance and is validated before presentation.
-- OCI Always Free (Ampere A1 + Caddy/API/worker/Postgres) is the target host via Terraform. Render remains an alternate blueprint. A live OCI apply is still pending.
+- OCI Always Free is the target host via Terraform: prefer E2.1.Micro (micro stack) then Ampere A1 (full stack). Render remains an alternate blueprint. A live OCI compute launch is still capacity-dependent.
 - Durable worker queue is accepted (ADR 0024): PostgreSQL leases, fencing tokens, OCI enables the queue by default.
 - Repository layout groups code (`src/`), docs (`docs/`), deploy (`infra/`), and runtime skills (`agent/skills/`) — ADR 0023.
 - Chat sessions are chunked and embedded. A filing corpus and pgvector stay deferred.
