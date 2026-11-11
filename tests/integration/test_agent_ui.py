@@ -14,13 +14,46 @@ def test_chat_resolves_catalog_names_and_aliases() -> None:
 
 
 @pytest.mark.asyncio
-async def test_docs_redirect_to_the_agent_ui(api_client: httpx.AsyncClient) -> None:
-    docs = await api_client.get("/docs")
-    assert docs.status_code == 307
-    assert docs.headers["location"] == "http://127.0.0.1:3000"
-    assert "swagger" not in docs.text.lower()
+async def test_home_goes_to_agent_ui_and_docs_go_to_scalar(api_client: httpx.AsyncClient) -> None:
     home = await api_client.get("/")
     assert home.status_code == 307
+    assert home.headers["location"] == "http://127.0.0.1:3000"
+    docs = await api_client.get("/docs")
+    assert docs.status_code == 307
+    assert docs.headers["location"] == "/scalar"
+    redoc = await api_client.get("/redoc")
+    assert redoc.status_code == 307
+    assert redoc.headers["location"] == "/scalar"
+    scalar = await api_client.get("/scalar")
+    assert scalar.status_code == 200
+    assert "swagger" not in scalar.text.lower()
+    assert "scalar" in scalar.text.lower() or "api-reference" in scalar.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_scalar_stays_public_when_agentos_uses_security_key(tmp_path: object) -> None:
+    database = tmp_path / "scalar.db"  # type: ignore[operator]
+    settings = Settings(
+        api_key="test-key-123",
+        provider_mode="fixtures",
+        database_url=f"sqlite+pysqlite:///{database}",
+        agentos_enabled=True,
+        agentos_jwt_secret=None,
+        os_security_key="ui-token",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        scalar = await client.get("/scalar")
+        assert scalar.status_code == 200
+        openapi = await client.get("/openapi.json")
+        assert openapi.status_code == 200
+        paths = openapi.json()["paths"]
+        assert "/api/v1/assets/movers" in paths
+        assert "/agents" not in paths
+        assert "/sessions" not in paths
+        agents = await client.get("/agents")
+        assert agents.status_code == 401
 
 
 @pytest.mark.asyncio

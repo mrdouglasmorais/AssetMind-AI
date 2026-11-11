@@ -17,3 +17,5 @@ Accepted decisions are in `docs/adr`. The short version:
 - Horizon returns stay empty until the series covers them. The coverage score is not a buy grade.
 - News cards show a feed image only when the item declares one. The article page stays unopened.
 - Live search reads the brapi quote list and the CoinGecko coin list. The chat shows a page of that directory.
+- API docs are Scalar at `/scalar` (ADR 0011). Agent UI remains on `/`.
+- Movers (`GET /api/v1/assets/movers`) read provider change/volume with type, volume filter, and pagination (ADR 0021).

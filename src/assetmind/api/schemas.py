@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from assetmind.domain.assets.identity import AssetClass, Market
+from assetmind.domain.assets.movers import MoverItem, MoversPagination
 
 
 class AssetInput(BaseModel):
@@ -37,3 +38,11 @@ class AnalysisAccepted(BaseModel):
     status: str
     report: dict[str, object] | None
     error_code: str | None = None
+
+
+class MoversResponse(BaseModel):
+    rising: list[MoverItem]
+    falling: list[MoverItem]
+    pagination: MoversPagination
+    retrieved_at: datetime
+    limitation: str

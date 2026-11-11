@@ -3,7 +3,9 @@
 The MVP is acceptable for the article series when:
 
 - the app serves `/health` locally
+- `/scalar` serves the API reference and `/` still targets the Agent UI when configured
 - equity, crypto, and FII paths return structured reports in fixture mode
+- `GET /api/v1/assets/movers` returns rising/falling lists in fixture mode with type, limit, page, and volume filter
 - calculation tests match hand-computed values
 - the Agno workflow is the path the API uses
 - source names are present on evidence

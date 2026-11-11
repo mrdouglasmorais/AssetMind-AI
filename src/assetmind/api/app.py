@@ -7,6 +7,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from scalar_fastapi import add_scalar_reference
 
 from assetmind import __version__
 from assetmind.api.routes import router
@@ -113,6 +114,7 @@ def create_app(
     app.state.ping = lambda: ping(engine)
     app.state.rate_limiter = RateLimiter(runtime.rate_limit_per_minute)
     _mount_agent_ui(app, runtime)
+    _mount_api_docs(app)
     app.include_router(router)
     if runtime.cors_origin_list:
         app.add_middleware(
@@ -123,21 +125,67 @@ def create_app(
         )
     if runtime.agentos_enabled:
         _mount_agent_os(app, runtime)
+    _limit_openapi_to_product_api(app)
     return app
 
 
+def _limit_openapi_to_product_api(app: FastAPI) -> None:
+    """Keep Scalar/OpenAPI on AssetMind routes. AgentOS control paths stay live but hidden."""
+
+    def openapi() -> dict[str, object]:
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        schema = FastAPI.openapi(app)
+        paths = schema.get("paths")
+        if isinstance(paths, dict):
+            schema["paths"] = {
+                path: item
+                for path, item in paths.items()
+                if path in {"/health", "/ready"} or path.startswith("/api/")
+            }
+        schema["info"] = {
+            **(schema.get("info") or {}),
+            "description": (
+                "AssetMind product HTTP API. "
+                "AgentOS chat control routes exist for the Agent UI but are omitted here."
+            ),
+        }
+        app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
+
+
 def _mount_agent_ui(app: FastAPI, settings: Settings) -> None:
-    """Send browsers to the Agno Agent UI. Swagger and ReDoc are not mounted."""
+    """Send `/` to the Agno Agent UI. API docs live on `/scalar`."""
 
     target = settings.agent_ui_url.strip()
 
     def agent_ui() -> RedirectResponse | JSONResponse:
         if not target:
-            return JSONResponse({"name": "AssetMind AI", "health": "/health", "ui": "not configured"})
+            return JSONResponse(
+                {
+                    "name": "AssetMind AI",
+                    "health": "/health",
+                    "ui": "not configured",
+                    "docs": "/scalar",
+                }
+            )
         return RedirectResponse(target, status_code=307)
 
-    for path in ("/", "/docs", "/redoc"):
-        app.add_api_route(path, agent_ui, methods=["GET"], include_in_schema=False, response_model=None)
+    app.add_api_route("/", agent_ui, methods=["GET"], include_in_schema=False, response_model=None)
+
+
+def _mount_api_docs(app: FastAPI) -> None:
+    """Mount Scalar and send legacy Swagger/ReDoc paths there."""
+
+    add_scalar_reference(app, route="/scalar", include_in_schema=False)
+
+    def docs_to_scalar() -> RedirectResponse:
+        return RedirectResponse("/scalar", status_code=307)
+
+    for path in ("/docs", "/redoc"):
+        app.add_api_route(path, docs_to_scalar, methods=["GET"], include_in_schema=False, response_model=None)
 
 
 def _mount_agent_os(app: FastAPI, settings: Settings) -> None:
@@ -168,6 +216,15 @@ def _mount_agent_os(app: FastAPI, settings: Settings) -> None:
         "auto_provision_dbs": True,
         "cors_allowed_origins": _ui_origins(settings),
     }
+    public_routes = [
+        "/health",
+        "/ready",
+        "/api/*",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/scalar",
+    ]
     if settings.agentos_jwt_secret:
         from agno.os.authz import Authorization
 
@@ -175,7 +232,7 @@ def _mount_agent_os(app: FastAPI, settings: Settings) -> None:
             authorization=Authorization(
                 verification_keys=[settings.agentos_jwt_secret],
                 algorithm="HS256",
-                excluded_route_paths=["/health", "/ready", "/api/*", "/docs", "/openapi.json", "/redoc"],
+                excluded_route_paths=public_routes,
             ),
             **common,
         ).get_app()
@@ -183,7 +240,7 @@ def _mount_agent_os(app: FastAPI, settings: Settings) -> None:
     if not security_key:
         raise RuntimeError("ASSETMIND_API_KEY or ASSETMIND_OS_SECURITY_KEY is required when AgentOS is enabled.")
     AgentOS(
-        authorization_config=AuthorizationConfig(excluded_route_paths=["/ready", "/api/*"]),
+        authorization_config=AuthorizationConfig(excluded_route_paths=public_routes),
         **common,
     ).get_app()
 

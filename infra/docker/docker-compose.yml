@@ -15,7 +15,8 @@ services:
 
   api:
     build:
-      context: ../..
+      # Paths are relative to --project-directory (repo root via `make up`).
+      context: .
       dockerfile: infra/docker/Dockerfile
     environment:
       PORT: "8000"
@@ -39,7 +40,7 @@ services:
 
   ui:
     build:
-      context: ../..
+      context: .
       dockerfile: ui/Dockerfile
     ports:
       - "3000:3000"

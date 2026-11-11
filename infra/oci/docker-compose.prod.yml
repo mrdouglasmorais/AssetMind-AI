@@ -25,7 +25,8 @@ x-app-env: &app-env
 x-app-image: &app-image
   image: ${ASSETMIND_IMAGE:-assetmind-ai:local}
   build:
-    context: ../..
+    # Relative to --project-directory (repository root).
+    context: .
     dockerfile: infra/docker/Dockerfile
   env_file:
     - path: .env

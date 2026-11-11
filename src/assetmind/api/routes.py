@@ -3,12 +3,13 @@
 import json
 import re
 from collections.abc import Iterator
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from assetmind.api.schemas import AnalysisAccepted, AnalysisCreate, ErrorBody
+from assetmind.api.schemas import AnalysisAccepted, AnalysisCreate, ErrorBody, MoversResponse
 from assetmind.application.budget import provider_probe_snapshot
 from assetmind.application.service import AnalysisService
 from assetmind.domain.assets.catalog import (
@@ -18,11 +19,13 @@ from assetmind.domain.assets.catalog import (
     search_entries,
 )
 from assetmind.domain.assets.identity import AssetRequest
+from assetmind.domain.assets.movers import MoverAssetType, MoverDirection, MoverSort
 from assetmind.domain.errors import DomainError
 from assetmind.domain.scenarios.policy import ScenarioAssumptions
 from assetmind.persistence.repository import AnalysisRepository, StoredAnalysis
 from assetmind.providers.errors import ProviderError
 from assetmind.providers.listings import cached_listings
+from assetmind.providers.movers import cached_movers, fixture_movers
 from assetmind.providers.news import fetch_headlines
 from assetmind.security.auth import AuthenticationError, require_api_key
 
@@ -66,6 +69,51 @@ async def search_assets(
             return catalog_payload(search_catalog(q, limit=50))
         return catalog_payload(search_entries(listed, q, limit=50), limitation=LIVE_LISTING_LIMITATION)
     return catalog_payload(search_catalog(q, limit=50))
+
+
+@router.get("/api/v1/assets/movers", response_model=MoversResponse)
+async def list_movers(
+    request: Request,
+    direction: Annotated[MoverDirection, Query()] = MoverDirection.BOTH,
+    asset_type: Annotated[MoverAssetType, Query(alias="type")] = MoverAssetType.ALL,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    page: Annotated[int, Query(ge=1)] = 1,
+    min_volume: Annotated[float, Query(ge=0)] = 0,
+    sort_by: Annotated[MoverSort, Query()] = MoverSort.CHANGE,
+    x_api_key: str | None = Header(default=None),
+) -> MoversResponse:
+    """List assets rising and falling. Quantity, volume filter, type, and pagination are query params."""
+
+    _authorize(request, x_api_key)
+    _limit(request, x_api_key or "anonymous")
+    settings = request.app.state.settings
+    if settings.provider_mode == "fixtures":
+        result = fixture_movers(
+            direction=direction,
+            asset_type=asset_type,
+            limit=limit,
+            page=page,
+            min_volume=min_volume,
+            sort_by=sort_by,
+        )
+    else:
+        try:
+            result = await cached_movers(
+                request.app.state.http_client,
+                brapi_base_url=settings.brapi_base_url,
+                brapi_api_key=settings.brapi_api_key,
+                coingecko_base_url=settings.coingecko_base_url,
+                coingecko_api_key=settings.coingecko_api_key,
+                direction=direction,
+                asset_type=asset_type,
+                limit=limit,
+                page=page,
+                min_volume=min_volume,
+                sort_by=sort_by,
+            )
+        except ProviderError as exc:
+            raise HTTPException(status_code=503, detail=exc.message) from exc
+    return MoversResponse.model_validate(result.model_dump())
 
 
 @router.get("/api/v1/assets/{symbol}/news")

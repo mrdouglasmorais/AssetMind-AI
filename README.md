@@ -109,14 +109,14 @@ scripts/           utilitários de operador
 
 Pré-requisitos: [uv](https://docs.astral.sh/uv/), Python 3.12 ou 3.13, e `make`. Docker entra só nos alvos de imagem e Compose.
 
-`make init` cria `.env` a partir de `.env.example` quando o arquivo ainda não existe, preenche `ASSETMIND_API_KEY` com `local-dev-key` se a linha estiver vazia, e instala as dependências. Essa chave vale para a máquina local. Troque-a antes de qualquer ambiente compartilhado. O modo padrão continua `fixtures`: os preços são séries sintéticas, não cotação.
+`make init` cria `.env` a partir de `.env.example` quando o arquivo ainda não existe, preenche `ASSETMIND_API_KEY` com `local-dev-key` se a linha estiver vazia, e instala as dependências. Essa chave vale para a máquina local. Troque-a antes de qualquer ambiente compartilhado. Com AgentOS ligado (`make watch`), `ASSETMIND_API_KEY` ou `ASSETMIND_OS_SECURITY_KEY` precisa estar preenchido — senão a API não sobe. O modo padrão continua `fixtures`: os preços são séries sintéticas, não cotação.
 
 ```bash
 make init
 make watch
 ```
 
-`make watch` sobe a API em [http://127.0.0.1:8000](http://127.0.0.1:8000) e o [Agent UI](https://docs.agno.com/other/agent-ui) do Agno em [http://127.0.0.1:3000](http://127.0.0.1:3000). A interface recarrega com `src/`. Abrir `/`, `/docs` ou `/redoc` na API redireciona para o Agent UI. O Swagger não é servido. O esquema da API continua em `/openapi.json`. Outra porta da API: `make watch PORT=9000`. O passo a passo está em [docs/tutorials/first-analysis.md](docs/tutorials/first-analysis.md).
+`make watch` sobe a API em [http://127.0.0.1:8000](http://127.0.0.1:8000) e o [Agent UI](https://docs.agno.com/other/agent-ui) do Agno em [http://127.0.0.1:3000](http://127.0.0.1:3000). A interface recarrega com `src/`. Abrir `/` redireciona para o Agent UI. A documentação da API fica em `/scalar` (Scalar). `/docs` e `/redoc` apontam para `/scalar`. O Swagger não é servido. O esquema da API continua em `/openapi.json`. Outra porta da API: `make watch PORT=9000`. O passo a passo e o troubleshooting estão em [docs/tutorials/first-analysis.md](docs/tutorials/first-analysis.md).
 
 No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG11`. A resposta é o relatório determinístico. O token do Agent UI é o mesmo `ASSETMIND_API_KEY`, salvo se `ASSETMIND_OS_SECURITY_KEY` estiver definido. As rotas `/api/v1` continuam pedindo `X-API-Key`.
 
@@ -141,7 +141,7 @@ No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG1
 | `make logs` | Acompanha o log da API no Compose |
 | `make clean` | Remove cache local e o SQLite `assetmind.db` |
 
-`make up` publica a API em `http://localhost:8000` com o Postgres de [infra/docker/docker-compose.yml](infra/docker/docker-compose.yml). A senha `assetmind` desse arquivo vale só para desenvolvimento. `make build` só constrói a imagem. Ela ainda não significa um deploy validado.
+`make up` publica a API em `http://localhost:8000` com o Postgres de [infra/docker/docker-compose.yml](infra/docker/docker-compose.yml). Não há Compose na raiz do repositório — use `make up` em vez de `docker compose up` sem `-f`. A senha `assetmind` desse arquivo vale só para desenvolvimento. `make build` só constrói a imagem. Ela ainda não significa um deploy validado.
 
 ## API
 
@@ -149,7 +149,9 @@ No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG1
 | --- | --- | --- |
 | `GET` | `/health` | pública |
 | `GET` | `/ready` | pública |
+| `GET` | `/scalar` | pública (docs interativas) |
 | `GET` | `/api/v1/assets/search?q=` | `X-API-Key`. `q` vazio lista o catálogo em `results` e `by_type` |
+| `GET` | `/api/v1/assets/movers` | `X-API-Key`. Query: `direction`, `type`, `limit`, `page`, `min_volume`, `sort_by` |
 | `POST` | `/api/v1/analyses` | `X-API-Key` |
 | `GET` | `/api/v1/analyses/{id}` | `X-API-Key` |
 | `GET` | `/api/v1/analyses/{id}/events` | `X-API-Key`, SSE |
@@ -157,6 +159,9 @@ No chat, escreva um ativo do catálogo, por exemplo `PETR4`, `bitcoin` ou `HGLG1
 
 ```bash
 curl -s http://localhost:8000/health
+
+curl -s "http://localhost:8000/api/v1/assets/movers?direction=both&type=equity&limit=5" \
+  -H "X-API-Key: $ASSETMIND_API_KEY"
 
 curl -s http://localhost:8000/api/v1/analyses \
   -H "X-API-Key: $ASSETMIND_API_KEY" \
@@ -170,7 +175,7 @@ curl -s http://localhost:8000/api/v1/analyses \
   }'
 ```
 
-A resposta traz `analysis_id`, `correlation_id` e `status`. Os status úteis são `completed`, `partial` e `failed`. Um resultado `partial` conserva o que já foi calculado e nomeia o limite ou a lacuna. O progresso gravado sai em `GET /api/v1/analyses/{id}/events`.
+A resposta de análise traz `analysis_id`, `correlation_id` e `status`. Os status úteis são `completed`, `partial` e `failed`. Um resultado `partial` conserva o que já foi calculado e nomeia o limite ou a lacuna. O progresso gravado sai em `GET /api/v1/analyses/{id}/events`. Movers devolvem `rising`, `falling`, `pagination` e `limitation`.
 
 Símbolo inválido e ticker ambíguo respondem `422`. Chave ausente responde `401`. O limite em memória responde `429`. O contrato completo está em [docs/specs/api-contracts.md](docs/specs/api-contracts.md) e [docs/api/http.md](docs/api/http.md).
 
