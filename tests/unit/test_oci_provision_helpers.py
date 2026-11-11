@@ -24,4 +24,5 @@ def test_flex_detection_and_compose_profile(monkeypatch) -> None:
     assert mod._shape_attempts() == ["VM.Standard.E2.1.Micro"]
     monkeypatch.setenv("OCI_AVAILABILITY_DOMAINS", "AD-1, AD-2")
     assert mod._availability_domains("default") == ["AD-1", "AD-2"]
-    assert mod._boot_volume_gbs("VM.Standard.E2.1.Micro") == 47
+    assert mod._boot_volume_gbs("VM.Standard.E2.1.Micro") == 50
+    assert mod._boot_volume_gbs("VM.Standard.A1.Flex") == 50

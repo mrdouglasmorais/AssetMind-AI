@@ -142,8 +142,9 @@ def _resolve_image_id(compute: object, *, compartment_id: str, shape: str, fallb
 
 
 def _boot_volume_gbs(shape: str) -> int:
+    # OCI requires boot volumes >= 50 GB.
     if shape == SHAPE_MICRO:
-        return int(os.environ.get("OCI_BOOT_VOLUME_GBS_MICRO", "47"))
+        return int(os.environ.get("OCI_BOOT_VOLUME_GBS_MICRO", "50"))
     return int(os.environ.get("OCI_BOOT_VOLUME_GBS", "50"))
 
 
@@ -257,17 +258,18 @@ def main() -> int:
                 if _is_capacity_error(exc):
                     print(f"Out of host capacity for {shape} in {availability_domain}")
                     continue
+                # Shape/image quirks: try the next AD/shape instead of failing the job.
                 capacity_only = False
-                print(f"OCI ServiceError: {exc}", file=sys.stderr)
-                return 1
+                print(f"OCI ServiceError for {shape} in {availability_domain}: {exc}", file=sys.stderr)
+                continue
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 if _is_capacity_error(exc):
                     print(f"Out of host capacity for {shape} in {availability_domain}")
                     continue
                 capacity_only = False
-                print(f"launch failed: {exc}", file=sys.stderr)
-                return 1
+                print(f"launch failed for {shape} in {availability_domain}: {exc}", file=sys.stderr)
+                continue
 
             instance = response.data
             print(f"Launching {instance.id} shape={shape} …")
@@ -280,7 +282,7 @@ def main() -> int:
             _emit("compose_profile", _compose_profile_for_shape(shape))
             return 0
 
-    if capacity_only:
+    if capacity_only or (last_error is not None and _is_capacity_error(last_error)):
         print("Out of host capacity for all shapes — skipping provision (soft).")
         _emit("provisioned", "false")
         _emit("instance_id", "")

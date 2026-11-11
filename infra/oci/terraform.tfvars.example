@@ -17,7 +17,7 @@ ssh_allowed_cidr    = "203.0.113.10/32"
 # shape                  = "VM.Standard.A1.Flex"
 # instance_ocpus         = 1   # Flex shapes only
 # instance_memory_in_gbs = 6   # Flex shapes only
-# boot_volume_size_in_gbs = 47
+# boot_volume_size_in_gbs = 50
 # availability_domain_number = 1
 # When GitHub Actions owns the VM:
 # enable_compute = false
