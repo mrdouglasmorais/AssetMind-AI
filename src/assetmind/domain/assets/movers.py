@@ -61,6 +61,4 @@ MOVERS_LIMITATION = (
     "This is not a recommendation."
 )
 
-FIXTURE_MOVERS_LIMITATION = (
-    "Fixture movers are synthetic samples for offline demos. They are not live quotes."
-)
+FIXTURE_MOVERS_LIMITATION = "Fixture movers are synthetic samples for offline demos. They are not live quotes."

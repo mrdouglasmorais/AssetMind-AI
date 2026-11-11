@@ -139,15 +139,12 @@ def _limit_openapi_to_product_api(app: FastAPI) -> None:
         paths = schema.get("paths")
         if isinstance(paths, dict):
             schema["paths"] = {
-                path: item
-                for path, item in paths.items()
-                if path in {"/health", "/ready"} or path.startswith("/api/")
+                path: item for path, item in paths.items() if path in {"/health", "/ready"} or path.startswith("/api/")
             }
         schema["info"] = {
             **(schema.get("info") or {}),
             "description": (
-                "AssetMind product HTTP API. "
-                "AgentOS chat control routes exist for the Agent UI but are omitted here."
+                "AssetMind product HTTP API. AgentOS chat control routes exist for the Agent UI but are omitted here."
             ),
         }
         app.openapi_schema = schema
